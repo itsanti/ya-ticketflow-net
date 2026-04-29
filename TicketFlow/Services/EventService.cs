@@ -19,6 +19,10 @@ namespace TicketFlow.Services
 
         public Guid AddEvent(CreateEventDto dto)
         {
+            if (dto.EndAt <= dto.StartAt)
+            {
+                throw new ArgumentException("EndAt must be greater than StartAt");
+            }
             var newEvent = new Event
             {
                 Id = Guid.NewGuid(),
@@ -33,6 +37,10 @@ namespace TicketFlow.Services
 
         public Event? UpdateEvent(Guid eventId, UpdateEventDto dto)
         {
+            if (dto.EndAt <= dto.StartAt)
+            {
+                throw new ArgumentException("EndAt must be greater than StartAt");
+            }
             var existingEvent = GetEvent(eventId);
             if (existingEvent == null)
                 return null;
@@ -45,11 +53,14 @@ namespace TicketFlow.Services
             return existingEvent;
         }
 
-        public void RemoveEvent(Guid eventId)
+        public bool RemoveEvent(Guid eventId)
         {
             var eventToRemove = GetEvent(eventId);
-            if (eventToRemove != null)
-                _events.Remove(eventToRemove);
+            if (eventToRemove == null)
+            {
+                return false;
+            }
+            return _events.Remove(eventToRemove);
         }
     }
 }

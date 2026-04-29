@@ -9,6 +9,6 @@ namespace TicketFlow.Services
         Event? GetEvent(Guid eventId);
         Guid AddEvent(CreateEventDto dto);
         Event? UpdateEvent(Guid eventId, UpdateEventDto dto);
-        void RemoveEvent(Guid eventId);
+        bool RemoveEvent(Guid eventId);
     }
 }
