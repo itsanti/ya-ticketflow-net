@@ -1,4 +1,5 @@
-﻿using TicketFlow.Models;
+﻿using TicketFlow.DTOs.Events;
+using TicketFlow.Models;
 
 namespace TicketFlow.Services
 {
@@ -16,23 +17,30 @@ namespace TicketFlow.Services
             return _events.FirstOrDefault(e => e.Id == eventId);
         }
 
-        public Guid AddEvent(Event newEvent)
+        public Guid AddEvent(CreateEventDto dto)
         {
-            newEvent.Id = Guid.NewGuid();
+            var newEvent = new Event
+            {
+                Id = Guid.NewGuid(),
+                Title = dto.Title,
+                Description = dto.Description,
+                StartAt = dto.StartAt,
+                EndAt = dto.EndAt
+            };
             _events.Add(newEvent);
             return newEvent.Id;
         }
 
-        public Event? UpdateEvent(Event updatedEvent)
+        public Event? UpdateEvent(Guid eventId, UpdateEventDto dto)
         {
-            var existingEvent = GetEvent(updatedEvent.Id);
+            var existingEvent = GetEvent(eventId);
             if (existingEvent == null)
                 return null;
 
-            existingEvent.Title = updatedEvent.Title;
-            existingEvent.Description = updatedEvent.Description;
-            existingEvent.StartAt = updatedEvent.StartAt;
-            existingEvent.EndAt = updatedEvent.EndAt;
+            existingEvent.Title = dto.Title;
+            existingEvent.Description = dto.Description;
+            existingEvent.StartAt = dto.StartAt;
+            existingEvent.EndAt = dto.EndAt;
 
             return existingEvent;
         }

@@ -1,4 +1,5 @@
-﻿using TicketFlow.Models;
+﻿using TicketFlow.DTOs.Events;
+using TicketFlow.Models;
 
 namespace TicketFlow.Services
 {
@@ -6,8 +7,8 @@ namespace TicketFlow.Services
     {
         List<Event> GetEvents();
         Event? GetEvent(Guid eventId);
-        Guid AddEvent(Event newEvent);
-        Event? UpdateEvent(Event updatedEvent);
+        Guid AddEvent(CreateEventDto dto);
+        Event? UpdateEvent(Guid eventId, UpdateEventDto dto);
         void RemoveEvent(Guid eventId);
     }
 }
