@@ -1,4 +1,5 @@
 
+using TicketFlow.Middlewares;
 using TicketFlow.Services;
 
 namespace TicketFlow
@@ -13,6 +14,9 @@ namespace TicketFlow
             builder.Services.AddSingleton<IEventService, EventService>();
 
             builder.Services.AddControllers();
+
+            builder.Services.AddProblemDetails();
+
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
             builder.Services.AddEndpointsApiExplorer();
@@ -20,12 +24,17 @@ namespace TicketFlow
 
             var app = builder.Build();
 
+            app.UseExceptionHandler();
+            app.UseStatusCodePages();
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.UseSwagger();
                 app.UseSwaggerUI();
+
+                app.UseRequestLogging();
             }
 
             app.UseHttpsRedirection();
