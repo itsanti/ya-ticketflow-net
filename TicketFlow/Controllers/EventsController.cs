@@ -42,7 +42,11 @@ namespace TicketFlow.Controllers
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return Problem(
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Validation error"
+                );
             }
         }
 
@@ -58,7 +62,11 @@ namespace TicketFlow.Controllers
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return Problem(
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Validation error"
+                );
             }
         }
 
