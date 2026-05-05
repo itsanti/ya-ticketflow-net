@@ -27,6 +27,8 @@ namespace TicketFlow
             app.UseExceptionHandler();
             app.UseStatusCodePages();
 
+            app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {

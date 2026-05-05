@@ -1,4 +1,5 @@
 ﻿using TicketFlow.DTOs.Events;
+using TicketFlow.Exceptions;
 using TicketFlow.Models;
 
 namespace TicketFlow.Services
@@ -12,9 +13,14 @@ namespace TicketFlow.Services
             return [.. _events];
         }
 
-        public Event? GetEvent(Guid eventId)
+        public Event GetEvent(Guid eventId)
         {
-            return _events.FirstOrDefault(e => e.Id == eventId);
+            var eventItem = _events.FirstOrDefault(e => e.Id == eventId);
+            if (eventItem == null)
+            {
+                throw new NotFoundException($"Event with ID {eventId} not found.");
+            }
+            return eventItem;
         }
 
         public Guid AddEvent(CreateEventDto dto)
@@ -33,13 +39,11 @@ namespace TicketFlow.Services
             return newEvent.Id;
         }
 
-        public Event? UpdateEvent(Guid eventId, UpdateEventDto dto)
+        public Event UpdateEvent(Guid eventId, UpdateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
             var existingEvent = GetEvent(eventId);
-            if (existingEvent == null)
-                return null;
 
             existingEvent.Title = dto.Title;
             existingEvent.Description = dto.Description;
@@ -52,17 +56,13 @@ namespace TicketFlow.Services
         public bool RemoveEvent(Guid eventId)
         {
             var eventToRemove = GetEvent(eventId);
-            if (eventToRemove == null)
-            {
-                return false;
-            }
             return _events.Remove(eventToRemove);
         }
 
         private static void ValidateDates(DateTime startAt, DateTime endAt)
         {
             if (endAt <= startAt)
-                throw new ArgumentException("EndAt must be greater than StartAt");
+                throw new ValidationException("EndAt must be greater than StartAt");
         }
     }
 }
