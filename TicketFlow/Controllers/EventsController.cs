@@ -17,9 +17,9 @@ namespace TicketFlow.Controllers
         }
 
         [HttpGet]
-        public ActionResult<List<Event>> GetEvents()
+        public ActionResult<List<Event>> GetEvents([FromQuery] EventFiltersDto filters)
         {
-            var events = _eventService.GetEvents();
+            var events = _eventService.GetEvents(filters);
             return Ok(events);
         }
 

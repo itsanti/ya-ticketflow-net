@@ -8,9 +8,26 @@ namespace TicketFlow.Services
     {
         private readonly List<Event> _events = [];
 
-        public List<Event> GetEvents()
+        public List<Event> GetEvents(EventFiltersDto filters)
         {
-            return [.. _events];
+            IEnumerable<Event> query = _events;
+
+            if (!string.IsNullOrWhiteSpace(filters.Title))
+            {
+                query = query.Where(e => e.Title.Contains(filters.Title, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (filters.From.HasValue)
+            {
+                query = query.Where(e => e.StartAt >= filters.From.Value);
+            }
+
+            if (filters.To.HasValue)
+            {
+                query = query.Where(e => e.EndAt <= filters.To.Value);
+            }
+
+            return [.. query];
         }
 
         public Event GetEvent(Guid eventId)
