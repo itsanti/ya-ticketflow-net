@@ -1,4 +1,5 @@
 ﻿using TicketFlow.DTOs.Events;
+using TicketFlow.DTOs.Pagination;
 using TicketFlow.Exceptions;
 using TicketFlow.Models;
 
@@ -8,7 +9,7 @@ namespace TicketFlow.Services
     {
         private readonly List<Event> _events = [];
 
-        public List<Event> GetEvents(EventFiltersDto filters)
+        public PaginatedResult<Event> GetEvents(EventFiltersDto filters)
         {
             IEnumerable<Event> query = _events;
 
@@ -21,13 +22,25 @@ namespace TicketFlow.Services
             {
                 query = query.Where(e => e.StartAt >= filters.From.Value);
             }
-
+            
             if (filters.To.HasValue)
             {
                 query = query.Where(e => e.EndAt <= filters.To.Value);
             }
 
-            return [.. query];
+            var totalCount = query.Count();
+
+            var items = query
+                .Skip((filters.Page - 1) * filters.PageSize)
+                .Take(filters.PageSize);
+
+            return new PaginatedResult<Event>
+            {
+                Items = [.. items],
+                TotalCount = totalCount,
+                Page = filters.Page,
+                PageSize = filters.PageSize
+            };
         }
 
         public Event GetEvent(Guid eventId)
