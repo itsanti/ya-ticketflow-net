@@ -131,6 +131,22 @@ namespace TicketFlow.Tests
 
         }
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void GetEvents_ShouldIgnoreTitleFilter_WhenTitleIsNullOrWhiteSpace(string? emptyTitle)
+        {
+            var service = new EventService();
+            foreach (var dto in _events) service.AddEvent(dto);
+
+            var filters = new EventFiltersDto { Title = emptyTitle };
+
+            var result = service.GetEvents(filters);
+
+            Assert.Equal(_events.Count, result.TotalCount);
+        }
+
         [Fact]
         public void GetEvents_ShouldFilterByDateRange()
         {
@@ -149,6 +165,25 @@ namespace TicketFlow.Tests
 
             Assert.Single(result.Items);
             Assert.Equal("IT-Конференция", result.Items.First().Title);
+        }
+
+        [Fact]
+        public void GetEvents_ShouldIncludeEvent_WhenItStartsExactlyAtFromDate()
+        {
+            var service = new EventService();
+            var targetDate = new DateTime(2026, 01, 01, 10, 0, 0);
+            var dto = new CreateEventDto
+            {
+                Title = "Border Event",
+                StartAt = targetDate,
+                EndAt = targetDate.AddHours(1)
+            };
+            service.AddEvent(dto);
+
+            var filters = new EventFiltersDto { From = targetDate };
+            var result = service.GetEvents(filters);
+
+            Assert.Single(result.Items);
         }
 
         [Fact]
