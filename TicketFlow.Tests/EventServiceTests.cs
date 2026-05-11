@@ -173,6 +173,28 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
+        public void GetEvents_ShouldReturnActualItemCountInPageSize()
+        {
+            var service = new EventService();
+            foreach (var dto in _events)
+            {
+                service.AddEvent(dto);
+            }
+
+            var filters = new EventFiltersDto
+            {
+                Page = 2,
+                PageSize = 2
+            };
+
+            var result = service.GetEvents(filters);
+
+            Assert.Single(result.Items);
+            Assert.Equal(3, result.TotalCount);
+            Assert.Equal(1, result.PageSize);
+        }
+
+        [Fact]
         public void GetEvents_ShouldFilterByTitleAndDateCombined()
         {
             var service = new EventService();
