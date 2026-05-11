@@ -22,7 +22,7 @@ namespace TicketFlow.Services
             {
                 query = query.Where(e => e.StartAt >= filters.From.Value);
             }
-            
+
             if (filters.To.HasValue)
             {
                 query = query.Where(e => e.EndAt <= filters.To.Value);
