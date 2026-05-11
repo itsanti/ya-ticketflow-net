@@ -43,9 +43,6 @@ namespace TicketFlow
 
             var app = builder.Build();
 
-            app.UseExceptionHandler();
-            app.UseStatusCodePages();
-
             app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
             // Configure the HTTP request pipeline.
@@ -54,15 +51,11 @@ namespace TicketFlow
                 app.MapOpenApi();
                 app.UseSwagger();
                 app.UseSwaggerUI();
-
                 app.UseRequestLogging();
             }
 
             app.UseHttpsRedirection();
-
             app.UseAuthorization();
-
-
             app.MapControllers();
 
             app.Run();
