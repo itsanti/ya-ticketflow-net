@@ -32,14 +32,15 @@ namespace TicketFlow.Services
 
             var items = query
                 .Skip((filters.Page - 1) * filters.PageSize)
-                .Take(filters.PageSize);
+                .Take(filters.PageSize)
+                .ToList();
 
             return new PaginatedResult<Event>
             {
-                Items = [.. items],
+                Items = items,
                 TotalCount = totalCount,
                 Page = filters.Page,
-                PageSize = filters.PageSize
+                PageSize = items.Count
             };
         }
 
