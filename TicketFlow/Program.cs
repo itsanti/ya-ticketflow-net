@@ -1,4 +1,5 @@
 
+using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Middlewares;
 using TicketFlow.Services;
 
@@ -13,7 +14,25 @@ namespace TicketFlow
             // Add services to the container.
             builder.Services.AddSingleton<IEventService, EventService>();
 
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .ConfigureApiBehaviorOptions(options =>
+                {
+                    options.InvalidModelStateResponseFactory = context =>
+                    {
+                        var errors = context.ModelState.Values
+                            .SelectMany(v => v.Errors)
+                            .Select(e => e.ErrorMessage);
+                        var detailMessage = string.Join(" ", errors);
+                        var problemDetails = new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Validation error",
+                            Detail = detailMessage
+                        };
+
+                        return new BadRequestObjectResult(problemDetails);
+                    };
+                });
 
             builder.Services.AddProblemDetails();
 
@@ -24,8 +43,7 @@ namespace TicketFlow
 
             var app = builder.Build();
 
-            app.UseExceptionHandler();
-            app.UseStatusCodePages();
+            app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -33,15 +51,11 @@ namespace TicketFlow
                 app.MapOpenApi();
                 app.UseSwagger();
                 app.UseSwaggerUI();
-
                 app.UseRequestLogging();
             }
 
             app.UseHttpsRedirection();
-
             app.UseAuthorization();
-
-
             app.MapControllers();
 
             app.Run();

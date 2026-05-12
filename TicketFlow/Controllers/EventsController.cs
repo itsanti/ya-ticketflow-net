@@ -17,9 +17,9 @@ namespace TicketFlow.Controllers
         }
 
         [HttpGet]
-        public ActionResult<List<Event>> GetEvents()
+        public ActionResult<List<Event>> GetEvents([FromQuery] EventFiltersDto filters)
         {
-            var events = _eventService.GetEvents();
+            var events = _eventService.GetEvents(filters);
             return Ok(events);
         }
 
@@ -27,55 +27,27 @@ namespace TicketFlow.Controllers
         public ActionResult<Event> GetEvent(Guid id)
         {
             var eventItem = _eventService.GetEvent(id);
-            if (eventItem == null)
-                return NotFound();
             return Ok(eventItem);
         }
 
         [HttpPost]
         public ActionResult<Guid> CreateEvent(CreateEventDto dto)
         {
-            try
-            {
-                var newEventId = _eventService.AddEvent(dto);
-                return CreatedAtAction(nameof(GetEvent), new { id = newEventId }, newEventId);
-            }
-            catch (ArgumentException ex)
-            {
-                return Problem(
-                    detail: ex.Message,
-                    statusCode: StatusCodes.Status400BadRequest,
-                    title: "Validation error"
-                );
-            }
+            var newEventId = _eventService.AddEvent(dto);
+            return CreatedAtAction(nameof(GetEvent), new { id = newEventId }, newEventId);
         }
 
         [HttpPut("{id}")]
         public ActionResult<Event> UpdateEvent(Guid id, UpdateEventDto dto)
         {
-            try 
-            {
-                var updatedEvent = _eventService.UpdateEvent(id, dto);
-                if (updatedEvent == null)
-                    return NotFound();
-                return Ok(updatedEvent);
-            }
-            catch (ArgumentException ex)
-            {
-                return Problem(
-                    detail: ex.Message,
-                    statusCode: StatusCodes.Status400BadRequest,
-                    title: "Validation error"
-                );
-            }
+            var updatedEvent = _eventService.UpdateEvent(id, dto);
+            return Ok(updatedEvent);
         }
 
         [HttpDelete("{id}")]
         public ActionResult RemoveEvent(Guid id)
         {
-            var deleted = _eventService.RemoveEvent(id);
-            if (!deleted)
-                return NotFound();
+            _eventService.RemoveEvent(id);
             return NoContent();
         }
     }
