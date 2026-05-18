@@ -1,4 +1,5 @@
-﻿using TicketFlow.Models;
+﻿using TicketFlow.Exceptions;
+using TicketFlow.Models;
 using TicketFlow.Models.Store;
 
 namespace TicketFlow.Services
@@ -14,10 +15,15 @@ namespace TicketFlow.Services
             return booking;
         }
 
-        public async Task<Booking?> GetBookingByIdAsync(Guid bookingId)
+        public async Task<Booking> GetBookingByIdAsync(Guid bookingId)
         {
-            var results = await _store.FindAsync(b => b.Id == bookingId);
-            return results.FirstOrDefault();
+            var bookings = await _store.FindAsync(b => b.Id == bookingId);
+            var booking = bookings.FirstOrDefault();
+            if (booking == null)
+            {
+                throw new NotFoundException($"Booking with ID {bookingId} not found.");
+            }
+            return booking;
         }
     }
 }

@@ -6,6 +6,6 @@ namespace TicketFlow.Services
     {
         Task<Booking> CreateBookingAsync(Guid eventId);
 
-        Task<Booking?> GetBookingByIdAsync(Guid bookingId);
+        Task<Booking> GetBookingByIdAsync(Guid bookingId);
     }
 }
