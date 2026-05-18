@@ -14,7 +14,8 @@ namespace TicketFlow
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-            builder.Services.AddSingleton<IEventService, EventService>();
+            builder.Services.AddSingleton<IInMemoryStore<Event>, InMemoryEventStore>();
+            builder.Services.AddScoped<IEventService, EventService>();
 
             builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
             builder.Services.AddScoped<IBookingService, BookingService>();

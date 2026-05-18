@@ -2,16 +2,23 @@
 using TicketFlow.DTOs.Pagination;
 using TicketFlow.Exceptions;
 using TicketFlow.Models;
+using TicketFlow.Models.Store;
 
 namespace TicketFlow.Services
 {
     public class EventService : IEventService
     {
-        private readonly List<Event> _events = [];
+        private readonly IInMemoryStore<Event> _eventStore;
 
-        public PaginatedResult<Event> GetEvents(EventFiltersDto filters)
+        public EventService(IInMemoryStore<Event> eventStore)
         {
-            IEnumerable<Event> query = _events;
+            _eventStore = eventStore;
+        }
+
+        public async Task<PaginatedResult<Event>> GetEventsAsync(EventFiltersDto filters)
+        {
+            var allEvents = await _eventStore.GetAllAsync();
+            IEnumerable<Event> query = allEvents;
 
             if (!string.IsNullOrWhiteSpace(filters.Title))
             {
@@ -44,9 +51,11 @@ namespace TicketFlow.Services
             };
         }
 
-        public Event GetEvent(Guid eventId)
+        public async Task<Event> GetEventAsync(Guid eventId)
         {
-            var eventItem = _events.FirstOrDefault(e => e.Id == eventId);
+            var events = await _eventStore.FindAsync(e => e.Id == eventId);
+            var eventItem = events.FirstOrDefault();
+
             if (eventItem == null)
             {
                 throw new NotFoundException($"Event with ID {eventId} not found.");
@@ -54,7 +63,7 @@ namespace TicketFlow.Services
             return eventItem;
         }
 
-        public Guid AddEvent(CreateEventDto dto)
+        public async Task<Guid> AddEventAsync(CreateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
@@ -66,28 +75,29 @@ namespace TicketFlow.Services
                 StartAt = dto.StartAt,
                 EndAt = dto.EndAt
             };
-            _events.Add(newEvent);
+            await _eventStore.AddAsync(newEvent);
             return newEvent.Id;
         }
 
-        public Event UpdateEvent(Guid eventId, UpdateEventDto dto)
+        public async Task<Event> UpdateEventAsync(Guid eventId, UpdateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
-            var existingEvent = GetEvent(eventId);
+            var existingEvent = await GetEventAsync(eventId);
 
             existingEvent.Title = dto.Title;
             existingEvent.Description = dto.Description;
             existingEvent.StartAt = dto.StartAt;
             existingEvent.EndAt = dto.EndAt;
 
+            await _eventStore.UpdateAsync(existingEvent);
             return existingEvent;
         }
 
-        public bool RemoveEvent(Guid eventId)
+        public async Task<bool> RemoveEventAsync(Guid eventId)
         {
-            var eventToRemove = GetEvent(eventId);
-            return _events.Remove(eventToRemove);
+            await GetEventAsync(eventId);
+            return await _eventStore.DeleteAsync(eventId);
         }
 
         private static void ValidateDates(DateTime startAt, DateTime endAt)

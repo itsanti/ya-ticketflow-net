@@ -38,7 +38,7 @@ namespace TicketFlow.Controllers
         [HttpPost("/events/{id}/book")]
         public async Task<IActionResult> CreateBooking(Guid id)
         {
-            _eventService.GetEvent(id);
+            await _eventService.GetEventAsync(id);
 
             var booking = await _bookingService.CreateBookingAsync(id);
 
