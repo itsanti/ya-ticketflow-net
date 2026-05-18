@@ -4,6 +4,7 @@ using TicketFlow.Middlewares;
 using TicketFlow.Models;
 using TicketFlow.Models.Store;
 using TicketFlow.Services;
+using TicketFlow.Services.Background;
 
 namespace TicketFlow
 {
@@ -19,6 +20,8 @@ namespace TicketFlow
 
             builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
             builder.Services.AddScoped<IBookingService, BookingService>();
+
+            builder.Services.AddHostedService<BookingProcessingBackgroundService>();
 
             builder.Services.AddControllers()
                 .ConfigureApiBehaviorOptions(options =>
