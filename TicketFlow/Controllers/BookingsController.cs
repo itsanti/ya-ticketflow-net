@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using TicketFlow.DTOs.Bookings;
 using TicketFlow.Services;
 
 namespace TicketFlow.Controllers
@@ -22,7 +23,16 @@ namespace TicketFlow.Controllers
         {
             var booking = await _bookingService.GetBookingByIdAsync(id);
 
-            return Ok(booking);
+            var responseDto = new BookingResponseDto
+            {
+                Id = booking.Id,
+                EventId = booking.EventId,
+                Status = booking.Status.ToString(),
+                CreatedAt = booking.CreatedAt,
+                ProcessedAt = booking.ProcessedAt
+            };
+
+            return Ok(responseDto);
         }
 
         [HttpPost("/events/{id}/book")]
@@ -32,7 +42,16 @@ namespace TicketFlow.Controllers
 
             var booking = await _bookingService.CreateBookingAsync(id);
 
-            return AcceptedAtAction(nameof(GetBooking), new { id = booking.Id }, booking);
+            var responseDto = new BookingResponseDto
+            {
+                Id = booking.Id,
+                EventId = booking.EventId,
+                Status = booking.Status.ToString(),
+                CreatedAt = booking.CreatedAt,
+                ProcessedAt = booking.ProcessedAt
+            };
+
+            return AcceptedAtAction(nameof(GetBooking), new { id = responseDto.Id }, responseDto);
         }
     }
 }
