@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using TicketFlow.Services;
 using TicketFlow.DTOs.Events;
 using TicketFlow.Models;
+using TicketFlow.Services;
 
 namespace TicketFlow.Controllers
 {
