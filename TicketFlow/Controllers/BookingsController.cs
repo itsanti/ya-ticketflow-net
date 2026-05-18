@@ -9,12 +9,10 @@ namespace TicketFlow.Controllers
     public class BookingsController : ControllerBase
     {
         private readonly IBookingService _bookingService;
-        private readonly IEventService _eventService;
 
         public BookingsController(IBookingService bookingService, IEventService eventService)
         {
             _bookingService = bookingService;
-            _eventService = eventService;
         }
 
 
@@ -38,8 +36,6 @@ namespace TicketFlow.Controllers
         [HttpPost("/events/{id}/book")]
         public async Task<IActionResult> CreateBooking(Guid id)
         {
-            await _eventService.GetEventAsync(id);
-
             var booking = await _bookingService.CreateBookingAsync(id);
 
             var responseDto = new BookingResponseDto
