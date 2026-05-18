@@ -1,6 +1,8 @@
 
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Middlewares;
+using TicketFlow.Models;
+using TicketFlow.Models.Store;
 using TicketFlow.Services;
 
 namespace TicketFlow
@@ -13,6 +15,9 @@ namespace TicketFlow
 
             // Add services to the container.
             builder.Services.AddSingleton<IEventService, EventService>();
+
+            builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
+            builder.Services.AddScoped<IBookingService, BookingService>();
 
             builder.Services.AddControllers()
                 .ConfigureApiBehaviorOptions(options =>
