@@ -1,5 +1,6 @@
 ﻿using TicketFlow.DTOs.Events;
 using TicketFlow.Exceptions;
+using TicketFlow.Models.Store;
 using TicketFlow.Services;
 
 namespace TicketFlow.Tests
@@ -32,14 +33,15 @@ namespace TicketFlow.Tests
         };
 
         [Fact]
-        public void AddEvent_ShouldReturnGuid_AndStoreEventInService()
+        public async Task AddEvent_ShouldReturnGuid_AndStoreEventInService()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
 
             var eventItem = _events.First();
 
-            var result = service.AddEvent(eventItem);
-            var savedEvent = service.GetEvent(result);
+            var result = await service.AddEventAsync(eventItem);
+            var savedEvent = await service.GetEventAsync(result);
 
             Assert.NotEqual(Guid.Empty, result);
             Assert.NotNull(savedEvent);
@@ -48,16 +50,18 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public void GetEvents_ShouldReturnAllStoredEvents_WhenNoFiltersApplied()
+        public async Task GetEvents_ShouldReturnAllStoredEvents_WhenNoFiltersApplied()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events)
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
             var filters = new EventFiltersDto();
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Equal(_events.Count, result.TotalCount);
             Assert.Equal(_events.Count, result.Items.Count());
@@ -65,13 +69,15 @@ namespace TicketFlow.Tests
 
 
         [Fact]
-        public void GetEvent_ShouldReturnCorrectEvent_WhenIdExists()
+        public async Task GetEvent_ShouldReturnCorrectEvent_WhenIdExists()
         {
-            var service = new EventService();
-            var _event = _events.First();
-            var id = service.AddEvent(_event);
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
 
-            var result = service.GetEvent(id);
+            var _event = _events.First();
+            var id = await service.AddEventAsync(_event);
+
+            var result = await service.GetEventAsync(id);
 
             Assert.NotNull(result);
             Assert.Equal(id, result.Id);
@@ -79,11 +85,13 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public void UpdateEvent_ShouldModifyStoredEvent_WhenIdExists()
+        public async Task UpdateEvent_ShouldModifyStoredEvent_WhenIdExists()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             var _event = _events.First();
-            var id = service.AddEvent(_event);
+            var id = await service.AddEventAsync(_event);
             var updateDto = new UpdateEventDto
             {
                 Title = "Новый Концерт",
@@ -92,8 +100,8 @@ namespace TicketFlow.Tests
                 EndAt = new DateTime(2026, 06, 02, 21, 0, 0),
             };
 
-            service.UpdateEvent(id, updateDto);
-            var result = service.GetEvent(id);
+            await service.UpdateEventAsync(id, updateDto);
+            var result = await service.GetEventAsync(id);
 
             Assert.Equal(updateDto.Title, result.Title);
             Assert.Equal(updateDto.StartAt, result.StartAt);
@@ -102,29 +110,33 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public void RemoveEvent_ShouldReturnTrue_AndRemoveEventFromService()
+        public async Task RemoveEvent_ShouldReturnTrue_AndRemoveEventFromService()
         {
-            var service = new EventService();
-            var id = service.AddEvent(_events.First());
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
 
-            var deleted = service.RemoveEvent(id);
+            var id = await service.AddEventAsync(_events.First());
+
+            var deleted = await service.RemoveEventAsync(id);
 
             Assert.True(deleted);
-            Assert.Throws<NotFoundException>(() => service.GetEvent(id));
+            await Assert.ThrowsAsync<NotFoundException>(() => service.GetEventAsync(id));
         }
 
         [Fact]
-        public void GetEvents_ShouldFilterByTitle_IgnoringCase()
+        public async Task GetEvents_ShouldFilterByTitle_IgnoringCase()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events)
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
 
             var filters = new EventFiltersDto { Title = "КОНЦЕРТ" };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Single(result.Items);
             Assert.Contains("Концерт", result.Items.First().Title);
@@ -135,25 +147,29 @@ namespace TicketFlow.Tests
         [InlineData(null)]
         [InlineData("")]
         [InlineData("   ")]
-        public void GetEvents_ShouldIgnoreTitleFilter_WhenTitleIsNullOrWhiteSpace(string? emptyTitle)
+        public async Task GetEvents_ShouldIgnoreTitleFilter_WhenTitleIsNullOrWhiteSpace(string? emptyTitle)
         {
-            var service = new EventService();
-            foreach (var dto in _events) service.AddEvent(dto);
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
+            foreach (var dto in _events) await service.AddEventAsync(dto);
 
             var filters = new EventFiltersDto { Title = emptyTitle };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Equal(_events.Count, result.TotalCount);
         }
 
         [Fact]
-        public void GetEvents_ShouldFilterByDateRange()
+        public async Task GetEvents_ShouldFilterByDateRange()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events)
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
             var filters = new EventFiltersDto
             {
@@ -161,16 +177,18 @@ namespace TicketFlow.Tests
                 To = new DateTime(2026, 07, 20, 10, 0, 0)
             };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Single(result.Items);
             Assert.Equal("IT-Конференция", result.Items.First().Title);
         }
 
         [Fact]
-        public void GetEvents_ShouldIncludeEvent_WhenItStartsExactlyAtFromDate()
+        public async Task GetEvents_ShouldIncludeEvent_WhenItStartsExactlyAtFromDate()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             var targetDate = new DateTime(2026, 01, 01, 10, 0, 0);
             var dto = new CreateEventDto
             {
@@ -178,21 +196,23 @@ namespace TicketFlow.Tests
                 StartAt = targetDate,
                 EndAt = targetDate.AddHours(1)
             };
-            service.AddEvent(dto);
+            await service.AddEventAsync(dto);
 
             var filters = new EventFiltersDto { From = targetDate };
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Single(result.Items);
         }
 
         [Fact]
-        public void GetEvents_ShouldReturnCorrectPage_WithPagination()
+        public async Task GetEvents_ShouldReturnCorrectPage_WithPagination()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events.Concat(_events))
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
             var filters = new EventFiltersDto
             {
@@ -200,7 +220,7 @@ namespace TicketFlow.Tests
                 PageSize = 2
             };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Equal(2, result.Items.Count());
             Assert.Equal(2 * _events.Count, result.TotalCount);
@@ -208,12 +228,14 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public void GetEvents_ShouldReturnActualItemCountInPageSize()
+        public async Task GetEvents_ShouldReturnActualItemCountInPageSize()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events)
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
 
             var filters = new EventFiltersDto
@@ -222,7 +244,7 @@ namespace TicketFlow.Tests
                 PageSize = 2
             };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Single(result.Items);
             Assert.Equal(3, result.TotalCount);
@@ -230,12 +252,14 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public void GetEvents_ShouldFilterByTitleAndDateCombined()
+        public async Task GetEvents_ShouldFilterByTitleAndDateCombined()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             foreach (var dto in _events)
             {
-                service.AddEvent(dto);
+                await service.AddEventAsync(dto);
             }
             var filters = new EventFiltersDto
             {
@@ -243,32 +267,38 @@ namespace TicketFlow.Tests
                 From = new DateTime(2026, 8, 1)
             };
 
-            var result = service.GetEvents(filters);
+            var result = await service.GetEventsAsync(filters);
 
             Assert.Empty(result.Items);
 
         }
 
         [Fact]
-        public void GetEvent_ShouldThrowNotFoundException()
+        public async Task GetEvent_ShouldThrowNotFoundException()
         {
-            var service = new EventService();
-            Assert.Throws<NotFoundException>(() => service.GetEvent(Guid.NewGuid()));
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
+            await Assert.ThrowsAsync<NotFoundException>(() => service.GetEventAsync(Guid.NewGuid()));
         }
 
         [Fact]
-        public void UpdateEvent_ShouldThrowNotFoundException_WhenIdDoesNotExist()
+        public async Task UpdateEvent_ShouldThrowNotFoundException_WhenIdDoesNotExist()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             var updateDto = new UpdateEventDto { Title = "New", StartAt = DateTime.Now, EndAt = DateTime.Now.AddHours(1) };
 
-            Assert.Throws<NotFoundException>(() => service.UpdateEvent(Guid.NewGuid(), updateDto));
+            await Assert.ThrowsAsync<NotFoundException>(() => service.UpdateEventAsync(Guid.NewGuid(), updateDto));
         }
 
         [Fact]
-        public void AddEvent_ShouldThrowValidationException_WhenDatesAreInvalid()
+        public async Task AddEvent_ShouldThrowValidationException_WhenDatesAreInvalid()
         {
-            var service = new EventService();
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
             var invalidDto = new CreateEventDto
             {
                 Title = "Fail",
@@ -276,14 +306,16 @@ namespace TicketFlow.Tests
                 EndAt = new DateTime(2026, 10, 09)
             };
 
-            Assert.Throws<ValidationException>(() => service.AddEvent(invalidDto));
+            await Assert.ThrowsAsync<ValidationException>(() => service.AddEventAsync(invalidDto));
         }
 
         [Fact]
-        public void UpdateEvent_ShouldThrowValidationException_WhenNewDatesAreInvalid()
+        public async Task UpdateEvent_ShouldThrowValidationException_WhenNewDatesAreInvalid()
         {
-            var service = new EventService();
-            var id = service.AddEvent(_events.First());
+            var store = new InMemoryEventStore();
+            var service = new EventService(store);
+
+            var id = await service.AddEventAsync(_events.First());
             var invalidUpdate = new UpdateEventDto
             {
                 Title = "Valid Title",
@@ -291,7 +323,7 @@ namespace TicketFlow.Tests
                 EndAt = DateTime.Now
             };
 
-            Assert.Throws<ValidationException>(() => service.UpdateEvent(id, invalidUpdate));
+            await Assert.ThrowsAsync<ValidationException>(() => service.UpdateEventAsync(id, invalidUpdate));
         }
     }
 }

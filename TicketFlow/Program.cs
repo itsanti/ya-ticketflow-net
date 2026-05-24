@@ -1,7 +1,10 @@
 
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Middlewares;
+using TicketFlow.Models;
+using TicketFlow.Models.Store;
 using TicketFlow.Services;
+using TicketFlow.Services.Background;
 
 namespace TicketFlow
 {
@@ -12,7 +15,13 @@ namespace TicketFlow
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-            builder.Services.AddSingleton<IEventService, EventService>();
+            builder.Services.AddSingleton<IInMemoryStore<Event>, InMemoryEventStore>();
+            builder.Services.AddScoped<IEventService, EventService>();
+
+            builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
+            builder.Services.AddScoped<IBookingService, BookingService>();
+
+            builder.Services.AddHostedService<BookingProcessingBackgroundService>();
 
             builder.Services.AddControllers()
                 .ConfigureApiBehaviorOptions(options =>
