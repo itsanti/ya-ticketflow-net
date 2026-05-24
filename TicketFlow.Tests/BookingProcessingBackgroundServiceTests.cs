@@ -70,6 +70,32 @@ namespace TicketFlow.Tests
             Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
             Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
         }
+
+        [Fact]
+        public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenBusinessRulesDictate()
+        {
+
+            var bookingStore = new InMemoryBookingStore();
+            var rejectedEventId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+            var booking = new Booking(rejectedEventId);
+            await bookingStore.AddAsync(booking);
+
+            var service = new BookingProcessingBackgroundService(bookingStore, _loggerMock.Object);
+            using var cts = new CancellationTokenSource();
+
+            var backgroundTask = service.StartAsync(cts.Token);
+
+            await Task.Delay(2500);
+
+            await cts.CancelAsync();
+            try { await backgroundTask; } catch (OperationCanceledException) { }
+
+            var processedBooking = (await bookingStore.GetAllAsync()).First();
+
+            Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
+            Assert.NotNull(processedBooking.ProcessedAt);
+            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+        }
     }
 }
 

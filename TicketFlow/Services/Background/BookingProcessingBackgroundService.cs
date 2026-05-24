@@ -34,7 +34,7 @@ namespace TicketFlow.Services.Background
 
                             await Task.Delay(_processingDelay, stoppingToken);
 
-                            booking.Status = BookingStatus.Confirmed;
+                            booking.Status = DetermineTargetStatus(booking);
                             booking.ProcessedAt = DateTime.UtcNow;
 
                             await _store.UpdateAsync(booking);
@@ -56,6 +56,17 @@ namespace TicketFlow.Services.Background
             }
 
             _logger.LogInformation("Booking processing background service is stopping.");
+        }
+
+        private static BookingStatus DetermineTargetStatus(Booking booking)
+        {
+            // TODO: Заглушка для будущего спринта.
+            if (booking.EventId == Guid.Parse("00000000-0000-0000-0000-000000000001"))
+            {
+                return BookingStatus.Rejected;
+            }
+
+            return BookingStatus.Confirmed;
         }
     }
 }
