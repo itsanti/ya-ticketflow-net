@@ -20,7 +20,7 @@ namespace TicketFlow.Models
 
         public static Event Create(string title, string? description, DateTime startAt, DateTime endAt, int totalSeats)
         {
-            if (totalSeats < 0)
+            if (totalSeats <= 0)
                 throw new ValidationException("TotalSeats must be greater than 0");
 
             return new Event
