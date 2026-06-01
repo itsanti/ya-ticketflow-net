@@ -61,7 +61,7 @@ namespace TicketFlow.Services
             };
         }
 
-        public async Task<Event> GetEventAsync(Guid eventId)
+        private async Task<Event> GetEventEntityAsync(Guid eventId)
         {
             var events = await _eventStore.FindAsync(e => e.Id == eventId);
             var eventItem = events.FirstOrDefault();
@@ -70,7 +70,23 @@ namespace TicketFlow.Services
             {
                 throw new NotFoundException($"Event with ID {eventId} not found.");
             }
+
             return eventItem;
+        }
+
+        public async Task<EventInfoDto> GetEventAsync(Guid eventId)
+        {
+            var eventItem = await GetEventEntityAsync(eventId);
+            return new EventInfoDto
+            {
+                Id = eventItem.Id,
+                Title = eventItem.Title,
+                Description = eventItem.Description,
+                StartAt = eventItem.StartAt,
+                EndAt = eventItem.EndAt,
+                TotalSeats = eventItem.TotalSeats,
+                AvailableSeats = eventItem.AvailableSeats
+            };
         }
 
         public async Task<Guid> AddEventAsync(CreateEventDto dto)
@@ -92,7 +108,7 @@ namespace TicketFlow.Services
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
-            var existingEvent = await GetEventAsync(eventId);
+            var existingEvent = await GetEventEntityAsync(eventId);
 
             existingEvent.Title = dto.Title;
             existingEvent.Description = dto.Description;
@@ -115,7 +131,7 @@ namespace TicketFlow.Services
 
         public async Task<bool> RemoveEventAsync(Guid eventId)
         {
-            await GetEventAsync(eventId);
+            await GetEventEntityAsync(eventId);
             return await _eventStore.DeleteAsync(eventId);
         }
 

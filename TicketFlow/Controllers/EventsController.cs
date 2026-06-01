@@ -25,18 +25,7 @@ namespace TicketFlow.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<EventInfoDto>> GetEvent(Guid id)
         {
-            var event_ = await _eventService.GetEventAsync(id);
-            var result = new EventInfoDto
-            {
-                Id = event_.Id,
-                Title = event_.Title,
-                Description = event_.Description,
-                StartAt = event_.StartAt,
-                EndAt = event_.EndAt,
-                TotalSeats = event_.TotalSeats,
-                AvailableSeats = event_.AvailableSeats
-            };
-            return Ok(result);
+            return Ok(await _eventService.GetEventAsync(id));
         }
 
         [HttpPost]
