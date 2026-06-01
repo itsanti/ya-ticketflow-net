@@ -2,8 +2,11 @@
 
 namespace TicketFlow.DTOs.Events
 {
-    public class UpdateEventDto
+    public class EventInfoDto
     {
+        [Required]
+        public required Guid Id { get; set; }
+
         [Required]
         public required string Title { get; set; }
 
@@ -17,5 +20,8 @@ namespace TicketFlow.DTOs.Events
 
         [Required]
         public required int TotalSeats { get; set; }
+
+        [Required]
+        public required int AvailableSeats { get; set; }
     }
 }

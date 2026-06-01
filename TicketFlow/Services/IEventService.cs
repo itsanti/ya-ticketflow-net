@@ -6,10 +6,10 @@ namespace TicketFlow.Services
 {
     public interface IEventService
     {
-        Task<PaginatedResult<Event>> GetEventsAsync(EventFiltersDto filters);
+        Task<PaginatedResult<EventInfoDto>> GetEventsAsync(EventFiltersDto filters);
         Task<Event> GetEventAsync(Guid eventId);
         Task<Guid> AddEventAsync(CreateEventDto dto);
-        Task<Event> UpdateEventAsync(Guid eventId, UpdateEventDto dto);
+        Task<EventInfoDto> UpdateEventAsync(Guid eventId, UpdateEventDto dto);
         Task<bool> RemoveEventAsync(Guid eventId);
     }
 }

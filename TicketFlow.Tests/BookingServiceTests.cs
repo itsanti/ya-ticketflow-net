@@ -12,7 +12,8 @@ namespace TicketFlow.Tests
             Title = "Концерт классической музыки",
             Description = "Вечер Бетховена в филармонии",
             StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
-            EndAt = new DateTime(2026, 06, 01, 21, 0, 0)
+            EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+            TotalSeats = 1,
         };
 
         [Fact]
@@ -128,7 +129,8 @@ namespace TicketFlow.Tests
                 Id = Guid.NewGuid(),
                 Title = "Тестовое событие",
                 StartAt = DateTime.UtcNow,
-                EndAt = DateTime.UtcNow.AddHours(2)
+                EndAt = DateTime.UtcNow.AddHours(2),
+                TotalSeats = 1,
             };
             await eventStore.AddAsync(eventItem);
             await eventStore.DeleteAsync(eventItem.Id);
