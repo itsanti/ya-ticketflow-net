@@ -51,6 +51,7 @@ namespace TicketFlow.Middlewares
                 {
                     (int)HttpStatusCode.NotFound => "Not found",
                     (int)HttpStatusCode.BadRequest => "Validation error",
+                    (int)HttpStatusCode.Conflict => "Conflict",
                     _ => LogAndReturn(ex)
                 },
             };
@@ -69,6 +70,7 @@ namespace TicketFlow.Middlewares
             {
                 ValidationException => StatusCodes.Status400BadRequest,
                 NotFoundException => StatusCodes.Status404NotFound,
+                NoAvailableSeatsException => StatusCodes.Status409Conflict,
                 _ => StatusCodes.Status500InternalServerError
             };
     }

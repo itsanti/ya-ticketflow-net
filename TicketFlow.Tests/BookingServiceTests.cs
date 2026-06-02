@@ -7,14 +7,14 @@ namespace TicketFlow.Tests
 {
     public class BookingServiceTests
     {
-        private readonly Event eventItem = new Event()
-        {
-            Title = "Концерт классической музыки",
-            Description = "Вечер Бетховена в филармонии",
-            StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
-            EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
-            TotalSeats = 1,
-        };
+        private readonly Event eventItem = Event.Create
+        (
+            "Концерт классической музыки",
+            "Вечер Бетховена в филармонии",
+            new DateTime(2026, 06, 01, 19, 0, 0),
+            new DateTime(2026, 06, 01, 21, 0, 0),
+            2
+        );
 
         [Fact]
         public async Task CreateBooking_ShouldReturnPendingBooking_WhenEventExists()
