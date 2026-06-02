@@ -14,6 +14,7 @@ namespace TicketFlow.Services.Background
         private readonly ILogger<BookingProcessingBackgroundService> _logger = logger;
 
         private readonly int _processingDelay = 2000;
+        private readonly int _pollingInterval = 5000;
 
         private readonly SemaphoreSlim _processingSemaphore = new(1, 1);
 
@@ -34,6 +35,8 @@ namespace TicketFlow.Services.Background
                 {
                     _logger.LogError(ex, "Error occurred during booking store polling.");
                 }
+
+                await Task.Delay(_pollingInterval, stoppingToken);
             }
 
             _logger.LogInformation("Booking processing background service is stopping.");
