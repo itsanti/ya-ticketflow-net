@@ -15,10 +15,21 @@ namespace TicketFlow.Tests
         {
 
             var bookingStore = new InMemoryBookingStore();
-            var booking = new Booking(Guid.NewGuid());
+            var eventStore = new InMemoryEventStore();
+
+            var eventItem = Event.Create(
+                "Тестовое событие",
+                "Описание",
+                DateTime.UtcNow.AddDays(1),
+                DateTime.UtcNow.AddDays(1).AddHours(2),
+                10
+            );
+            await eventStore.AddAsync(eventItem);
+
+            var booking = new Booking(eventItem.Id);
             await bookingStore.AddAsync(booking);
 
-            var service = new BookingProcessingBackgroundService(bookingStore, _loggerMock.Object);
+            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
             using var cts = new CancellationTokenSource();
 
             var backgroundTask = service.StartAsync(cts.Token);
@@ -46,6 +57,7 @@ namespace TicketFlow.Tests
         public async Task ExecuteAsync_ShouldIgnoreAlreadyConfirmedBookings()
         {
             var bookingStore = new InMemoryBookingStore();
+            var eventStore = new InMemoryEventStore();
 
             var booking = new Booking(Guid.NewGuid())
             {
@@ -56,7 +68,7 @@ namespace TicketFlow.Tests
 
             await bookingStore.AddAsync(booking);
 
-            var service = new BookingProcessingBackgroundService(bookingStore, _loggerMock.Object);
+            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
             using var cts = new CancellationTokenSource();
 
             var backgroundTask = service.StartAsync(cts.Token);
@@ -72,15 +84,16 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenBusinessRulesDictate()
+        public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenEventDoesNotExist()
         {
-
             var bookingStore = new InMemoryBookingStore();
-            var rejectedEventId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-            var booking = new Booking(rejectedEventId);
+            var eventStore = new InMemoryEventStore();
+
+            var fakeEventId = Guid.NewGuid();
+            var booking = new Booking(fakeEventId);
             await bookingStore.AddAsync(booking);
 
-            var service = new BookingProcessingBackgroundService(bookingStore, _loggerMock.Object);
+            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
             using var cts = new CancellationTokenSource();
 
             var backgroundTask = service.StartAsync(cts.Token);

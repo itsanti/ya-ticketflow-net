@@ -5,14 +5,17 @@ namespace TicketFlow.Services.Background
 {
     public class BookingProcessingBackgroundService(
         IInMemoryStore<Booking> store,
+        IInMemoryStore<Event> eventStore,
         ILogger<BookingProcessingBackgroundService> logger
     ) : BackgroundService
     {
         private readonly IInMemoryStore<Booking> _store = store;
+        private readonly IInMemoryStore<Event> _eventStore = eventStore;
         private readonly ILogger<BookingProcessingBackgroundService> _logger = logger;
 
         private readonly int _processingDelay = 2000;
-        private readonly int _pollingInterval = 5000;
+
+        private readonly SemaphoreSlim _processingSemaphore = new(1, 1);
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -24,49 +27,66 @@ namespace TicketFlow.Services.Background
                 {
                     var bookings = await _store.FindAsync(b => b.Status == BookingStatus.Pending);
 
-                    foreach (Booking booking in bookings)
-                    {
-                        if (stoppingToken.IsCancellationRequested) break;
-
-                        try
-                        {
-                            _logger.LogInformation("Processing booking with ID {BookingId}", booking.Id);
-
-                            await Task.Delay(_processingDelay, stoppingToken);
-
-                            booking.Status = DetermineTargetStatus(booking);
-                            booking.ProcessedAt = DateTime.UtcNow;
-
-                            await _store.UpdateAsync(booking);
-
-                            _logger.LogInformation("Successfully processed booking with ID {BookingId}", booking.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error occurred while processing booking with ID {BookingId}", booking.Id);
-                        }
-                    }
+                    var tasks = bookings.Select(booking => ProcessBookingAsync(booking, stoppingToken));
+                    await Task.WhenAll(tasks);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error occurred during booking store polling.");
                 }
-
-                await Task.Delay(_pollingInterval, stoppingToken);
             }
 
             _logger.LogInformation("Booking processing background service is stopping.");
         }
 
-        private static BookingStatus DetermineTargetStatus(Booking booking)
+        private async Task ProcessBookingAsync(Booking booking, CancellationToken stoppingToken)
         {
-            // TODO: Заглушка для будущего спринта.
-            if (booking.EventId == Guid.Parse("00000000-0000-0000-0000-000000000001"))
-            {
-                return BookingStatus.Rejected;
-            }
+            Event? eventItem = null;
 
-            return BookingStatus.Confirmed;
+            await Task.Delay(_processingDelay, stoppingToken);
+
+            await _processingSemaphore.WaitAsync(stoppingToken);
+
+            try
+            {
+                _logger.LogInformation("Processing booking with ID {BookingId}", booking.Id);
+
+                var events_ = await _eventStore.FindAsync(e => e.Id == booking.EventId);
+                eventItem = events_.FirstOrDefault();
+
+                if (eventItem == null)
+                {
+                    booking.Reject();
+                    await _store.UpdateAsync(booking);
+                    _logger.LogWarning("Event not found. Booking {BookingId} rejected.", booking.Id);
+                    return;
+                }
+
+                booking.Confirm();
+                await _store.UpdateAsync(booking);
+
+                _logger.LogInformation("Successfully processed booking with ID {BookingId}", booking.Id);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Processing canceled for booking {BookingId}", booking.Id);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while processing booking with ID {BookingId}", booking.Id);
+                booking.Reject();
+                await _store.UpdateAsync(booking);
+                if (eventItem != null)
+                {
+                    eventItem.ReleaseSeats();
+                    await _eventStore.UpdateAsync(eventItem);
+                }
+            }
+            finally
+            {
+                _processingSemaphore.Release();
+            }
         }
     }
 }
