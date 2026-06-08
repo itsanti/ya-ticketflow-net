@@ -2,10 +2,23 @@
 using Moq;
 using TicketFlow.Models;
 using TicketFlow.Models.Store;
+using TicketFlow.Services;
 using TicketFlow.Services.Background;
 
 namespace TicketFlow.Tests
 {
+    public class FailingBookingStore : InMemoryBookingStore
+    {
+        public override Task<Booking> UpdateAsync(Booking entity)
+        {
+            if (entity.Status == BookingStatus.Confirmed)
+            {
+                throw new Exception("Simulated database failure during confirmation.");
+            }
+            return base.UpdateAsync(entity);
+        }
+    }
+
     public class BookingProcessingBackgroundServiceTests
     {
         private readonly Mock<ILogger<BookingProcessingBackgroundService>> _loggerMock = new();
@@ -108,6 +121,45 @@ namespace TicketFlow.Tests
             Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
             Assert.NotNull(processedBooking.ProcessedAt);
             Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ShouldRejectBookingAndReleaseSeats_WhenExceptionOccurs_AndAllowNewBooking()
+        {
+            var bookingStore = new FailingBookingStore();
+            var eventStore = new InMemoryEventStore();
+            var bookingService = new BookingService(bookingStore, eventStore);
+
+            var eventItem = Event.Create(
+                "Конкурентный Концерт",
+                "Описание",
+                DateTime.UtcNow.AddDays(1),
+                DateTime.UtcNow.AddDays(1).AddHours(2),
+                1
+            );
+            await eventStore.AddAsync(eventItem);
+
+            var firstBooking = await bookingService.CreateBookingAsync(eventItem.Id);
+            Assert.Equal(0, eventItem.AvailableSeats);
+
+            var backgroundService = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
+            using var cts = new CancellationTokenSource();
+
+            var backgroundTask = backgroundService.StartAsync(cts.Token);
+
+            await Task.Delay(2500);
+
+            await cts.CancelAsync();
+            try { await backgroundTask; } catch (OperationCanceledException) { }
+
+            var updatedEvent = (await eventStore.FindAsync(e => e.Id == eventItem.Id)).First();
+            Assert.Equal(1, updatedEvent.AvailableSeats);
+
+            var secondBooking = await bookingService.CreateBookingAsync(eventItem.Id);
+
+            Assert.NotNull(secondBooking);
+            Assert.Equal(BookingStatus.Pending, secondBooking.Status);
+            Assert.Equal(0, updatedEvent.AvailableSeats);
         }
     }
 }
