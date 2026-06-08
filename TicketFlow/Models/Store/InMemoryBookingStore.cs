@@ -38,7 +38,7 @@ namespace TicketFlow.Models.Store
             }
         }
 
-        public Task<Booking> UpdateAsync(Booking entity)
+        public virtual Task<Booking> UpdateAsync(Booking entity)
         {
             lock (_lock)
             {

@@ -7,13 +7,10 @@ namespace TicketFlow.Tests
 {
     public class BookingServiceTests
     {
-        private readonly Event eventItem = new Event()
+        private static Event CreateTestEvent(int totalSeats)
         {
-            Title = "Концерт классической музыки",
-            Description = "Вечер Бетховена в филармонии",
-            StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
-            EndAt = new DateTime(2026, 06, 01, 21, 0, 0)
-        };
+            return TestHelpers.CreateTestEvent(totalSeats);
+        }
 
         [Fact]
         public async Task CreateBooking_ShouldReturnPendingBooking_WhenEventExists()
@@ -21,6 +18,7 @@ namespace TicketFlow.Tests
             var store = new InMemoryBookingStore();
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
+            var eventItem = CreateTestEvent(2);
 
             var eventId = Guid.NewGuid();
             eventItem.Id = eventId;
@@ -42,6 +40,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -58,6 +57,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -89,6 +89,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -123,18 +124,103 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
 
-            var eventItem = new Event
-            {
-                Id = Guid.NewGuid(),
-                Title = "Тестовое событие",
-                StartAt = DateTime.UtcNow,
-                EndAt = DateTime.UtcNow.AddHours(2)
-            };
+            var eventItem = CreateTestEvent(1);
+
             await eventStore.AddAsync(eventItem);
             await eventStore.DeleteAsync(eventItem.Id);
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
                 service.CreateBookingAsync(eventItem.Id));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldDecreaseAvailableSeats_WhenBookingIsSuccessful()
+        {
+            var store = new InMemoryBookingStore();
+            var eventStore = new InMemoryEventStore();
+            var service = new BookingService(store, eventStore);
+
+            var eventItem = CreateTestEvent(10);
+
+            await eventStore.AddAsync(eventItem);
+
+            var booking = await service.CreateBookingAsync(eventItem.Id);
+            var storedEvent = (await eventStore.GetAllAsync()).First(e => e.Id == eventItem.Id);
+
+            Assert.Equal(9, storedEvent.AvailableSeats);
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldThrowNoAvailableSeatsException_WhenEventIsSoldOut()
+        {
+            var store = new InMemoryBookingStore();
+            var eventStore = new InMemoryEventStore();
+            var service = new BookingService(store, eventStore);
+
+            var eventItem = CreateTestEvent(1);
+
+            await eventStore.AddAsync(eventItem);
+
+            await service.CreateBookingAsync(eventItem.Id);
+
+            await Assert.ThrowsAsync<NoAvailableSeatsException>(() =>
+                service.CreateBookingAsync(eventItem.Id));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldPreventOverbooking_UnderConcurrentLoad()
+        {
+            var store = new InMemoryBookingStore();
+            var eventStore = new InMemoryEventStore();
+            var service = new BookingService(store, eventStore);
+
+            var eventItem = CreateTestEvent(5);
+
+            await eventStore.AddAsync(eventItem);
+
+            var tasks = new List<Task>();
+            for (int i = 0; i < 20; i++)
+            {
+                tasks.Add(Task.Run(() => service.CreateBookingAsync(eventItem.Id)));
+            }
+
+            var exception = await Assert.ThrowsAsync<NoAvailableSeatsException>(async () =>
+            {
+                await Task.WhenAll(tasks);
+            });
+
+            var allBookings = await store.GetAllAsync();
+            var successfulBookings = allBookings.Where(b => b.Status == BookingStatus.Pending);
+
+            Assert.Equal(5, successfulBookings.Count());
+            Assert.Equal(0, eventItem.AvailableSeats);
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldGenerateUniqueIds_UnderConcurrentLoad()
+        {
+            var store = new InMemoryBookingStore();
+            var eventStore = new InMemoryEventStore();
+            var service = new BookingService(store, eventStore);
+            int seats = 10;
+
+            var eventItem = CreateTestEvent(seats);
+
+            await eventStore.AddAsync(eventItem);
+
+            var tasks = new List<Task>();
+            for (int i = 0; i < seats; i++)
+            {
+                tasks.Add(Task.Run(() => service.CreateBookingAsync(eventItem.Id)));
+            }
+
+            await Task.WhenAll(tasks);
+
+            var allBookings = await store.GetAllAsync();
+            var successfulBookings = allBookings.Where(b => b.Status == BookingStatus.Pending);
+
+            Assert.Equal(seats, successfulBookings.Count());
+            Assert.Equal(seats, successfulBookings.Select(b => b.Id).Distinct().Count());
         }
     }
 }

@@ -15,6 +15,7 @@ namespace TicketFlow.Tests
                 Description = "Вечер Бетховена в филармонии",
                 StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
                 EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+                TotalSeats = 1,
             },
             new CreateEventDto
             {
@@ -22,6 +23,7 @@ namespace TicketFlow.Tests
                 Description = "Тренды разработки на .NET 10",
                 StartAt = new DateTime(2026, 07, 15, 10, 0, 0),
                 EndAt = new DateTime(2026, 07, 16, 18, 0, 0),
+                TotalSeats = 1,
             },
             new CreateEventDto
             {
@@ -29,6 +31,7 @@ namespace TicketFlow.Tests
                 Description = "Короткое интерактивное шоу",
                 StartAt = new DateTime(2026, 08, 10, 12, 0, 0),
                 EndAt = new DateTime(2026, 08, 10, 12, 30, 0),
+                TotalSeats = 1,
             }
         };
 
@@ -98,6 +101,7 @@ namespace TicketFlow.Tests
                 Description = "Вечер Бетховена в филармонии",
                 StartAt = new DateTime(2026, 06, 02, 19, 0, 0),
                 EndAt = new DateTime(2026, 06, 02, 21, 0, 0),
+                TotalSeats = 1,
             };
 
             await service.UpdateEventAsync(id, updateDto);
@@ -194,7 +198,8 @@ namespace TicketFlow.Tests
             {
                 Title = "Border Event",
                 StartAt = targetDate,
-                EndAt = targetDate.AddHours(1)
+                EndAt = targetDate.AddHours(1),
+                TotalSeats = 1,
             };
             await service.AddEventAsync(dto);
 
@@ -288,7 +293,7 @@ namespace TicketFlow.Tests
             var store = new InMemoryEventStore();
             var service = new EventService(store);
 
-            var updateDto = new UpdateEventDto { Title = "New", StartAt = DateTime.Now, EndAt = DateTime.Now.AddHours(1) };
+            var updateDto = new UpdateEventDto { Title = "New", StartAt = DateTime.Now, EndAt = DateTime.Now.AddHours(1), TotalSeats = 1 };
 
             await Assert.ThrowsAsync<NotFoundException>(() => service.UpdateEventAsync(Guid.NewGuid(), updateDto));
         }
@@ -303,7 +308,8 @@ namespace TicketFlow.Tests
             {
                 Title = "Fail",
                 StartAt = new DateTime(2026, 10, 10),
-                EndAt = new DateTime(2026, 10, 09)
+                EndAt = new DateTime(2026, 10, 09),
+                TotalSeats = 1,
             };
 
             await Assert.ThrowsAsync<ValidationException>(() => service.AddEventAsync(invalidDto));
@@ -320,7 +326,8 @@ namespace TicketFlow.Tests
             {
                 Title = "Valid Title",
                 StartAt = DateTime.Now.AddDays(1),
-                EndAt = DateTime.Now
+                EndAt = DateTime.Now,
+                TotalSeats = 1,
             };
 
             await Assert.ThrowsAsync<ValidationException>(() => service.UpdateEventAsync(id, invalidUpdate));

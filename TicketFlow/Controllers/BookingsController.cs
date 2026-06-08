@@ -34,6 +34,7 @@ namespace TicketFlow.Controllers
         }
 
         [HttpPost("/events/{id}/book")]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateBooking(Guid id)
         {
             var booking = await _bookingService.CreateBookingAsync(id);

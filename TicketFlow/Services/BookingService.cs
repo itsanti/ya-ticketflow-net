@@ -12,19 +12,38 @@ namespace TicketFlow.Services
         private readonly IInMemoryStore<Booking> _bookingStore = store;
         private readonly IInMemoryStore<Event> _eventStore = eventStore;
 
+        private readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
+
         public async Task<Booking> CreateBookingAsync(Guid eventId)
         {
-            var events = await _eventStore.FindAsync(e => e.Id == eventId);
-            var eventItem = events.FirstOrDefault();
-
-            if (eventItem == null)
+            await _bookingSemaphore.WaitAsync();
+            try
             {
-                throw new NotFoundException($"Cannot create booking. Event with ID {eventId} not found.");
-            }
+                var events = await _eventStore.FindAsync(e => e.Id == eventId);
+                var eventItem = events.FirstOrDefault();
 
-            var booking = new Booking(eventId);
-            await _bookingStore.AddAsync(booking);
-            return booking;
+                if (eventItem == null)
+                {
+                    throw new NotFoundException($"Cannot create booking. Event with ID {eventId} not found.");
+                }
+
+
+                bool ok = eventItem.TryReserveSeats();
+                if (!ok)
+                {
+                    throw new NoAvailableSeatsException($"Cannot create booking. No available seats for event with ID {eventId}.");
+                }
+                var booking = new Booking(eventId);
+
+                await _eventStore.UpdateAsync(eventItem);
+                await _bookingStore.AddAsync(booking);
+
+                return booking;
+            }
+            finally
+            {
+                _bookingSemaphore.Release();
+            }
         }
 
         public async Task<Booking> GetBookingByIdAsync(Guid bookingId)

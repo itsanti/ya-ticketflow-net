@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.DTOs.Events;
 using TicketFlow.DTOs.Pagination;
-using TicketFlow.Models;
 using TicketFlow.Services;
 
 namespace TicketFlow.Controllers
@@ -18,17 +17,15 @@ namespace TicketFlow.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<PaginatedResult<Event>>> GetEvents([FromQuery] EventFiltersDto filters)
+        public async Task<ActionResult<PaginatedResult<EventInfoDto>>> GetEvents([FromQuery] EventFiltersDto filters)
         {
-            var events = await _eventService.GetEventsAsync(filters);
-            return Ok(events);
+            return Ok(await _eventService.GetEventsAsync(filters));
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Event>> GetEvent(Guid id)
+        public async Task<ActionResult<EventInfoDto>> GetEvent(Guid id)
         {
-            var eventItem = await _eventService.GetEventAsync(id);
-            return Ok(eventItem);
+            return Ok(await _eventService.GetEventAsync(id));
         }
 
         [HttpPost]
@@ -39,10 +36,9 @@ namespace TicketFlow.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<ActionResult<Event>> UpdateEvent(Guid id, UpdateEventDto dto)
+        public async Task<ActionResult<EventInfoDto>> UpdateEvent(Guid id, UpdateEventDto dto)
         {
-            var updatedEvent = await _eventService.UpdateEventAsync(id, dto);
-            return Ok(updatedEvent);
+            return Ok(await _eventService.UpdateEventAsync(id, dto));
         }
 
         [HttpDelete("{id}")]

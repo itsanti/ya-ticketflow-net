@@ -15,7 +15,7 @@ namespace TicketFlow.Services
             _eventStore = eventStore;
         }
 
-        public async Task<PaginatedResult<Event>> GetEventsAsync(EventFiltersDto filters)
+        public async Task<PaginatedResult<EventInfoDto>> GetEventsAsync(EventFiltersDto filters)
         {
             var allEvents = await _eventStore.GetAllAsync();
             IEnumerable<Event> query = allEvents;
@@ -40,9 +40,19 @@ namespace TicketFlow.Services
             var items = query
                 .Skip((filters.Page - 1) * filters.PageSize)
                 .Take(filters.PageSize)
+                .Select(eventItem => new EventInfoDto
+                {
+                    Id = eventItem.Id,
+                    Title = eventItem.Title,
+                    Description = eventItem.Description,
+                    StartAt = eventItem.StartAt,
+                    EndAt = eventItem.EndAt,
+                    TotalSeats = eventItem.TotalSeats,
+                    AvailableSeats = eventItem.AvailableSeats
+                })
                 .ToList();
 
-            return new PaginatedResult<Event>
+            return new PaginatedResult<EventInfoDto>
             {
                 Items = items,
                 TotalCount = totalCount,
@@ -51,7 +61,7 @@ namespace TicketFlow.Services
             };
         }
 
-        public async Task<Event> GetEventAsync(Guid eventId)
+        private async Task<Event> GetEventEntityAsync(Guid eventId)
         {
             var events = await _eventStore.FindAsync(e => e.Id == eventId);
             var eventItem = events.FirstOrDefault();
@@ -60,43 +70,68 @@ namespace TicketFlow.Services
             {
                 throw new NotFoundException($"Event with ID {eventId} not found.");
             }
+
             return eventItem;
+        }
+
+        public async Task<EventInfoDto> GetEventAsync(Guid eventId)
+        {
+            var eventItem = await GetEventEntityAsync(eventId);
+            return new EventInfoDto
+            {
+                Id = eventItem.Id,
+                Title = eventItem.Title,
+                Description = eventItem.Description,
+                StartAt = eventItem.StartAt,
+                EndAt = eventItem.EndAt,
+                TotalSeats = eventItem.TotalSeats,
+                AvailableSeats = eventItem.AvailableSeats
+            };
         }
 
         public async Task<Guid> AddEventAsync(CreateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
-            var newEvent = new Event
-            {
-                Id = Guid.NewGuid(),
-                Title = dto.Title,
-                Description = dto.Description,
-                StartAt = dto.StartAt,
-                EndAt = dto.EndAt
-            };
+            var newEvent = Event.Create(
+                dto.Title,
+                dto.Description,
+                dto.StartAt,
+                dto.EndAt,
+                dto.TotalSeats
+            );
             await _eventStore.AddAsync(newEvent);
             return newEvent.Id;
         }
 
-        public async Task<Event> UpdateEventAsync(Guid eventId, UpdateEventDto dto)
+        public async Task<EventInfoDto> UpdateEventAsync(Guid eventId, UpdateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
 
-            var existingEvent = await GetEventAsync(eventId);
+            var existingEvent = await GetEventEntityAsync(eventId);
 
             existingEvent.Title = dto.Title;
             existingEvent.Description = dto.Description;
             existingEvent.StartAt = dto.StartAt;
             existingEvent.EndAt = dto.EndAt;
+            existingEvent.TotalSeats = dto.TotalSeats;
 
             await _eventStore.UpdateAsync(existingEvent);
-            return existingEvent;
+            return new EventInfoDto
+            {
+                Id = existingEvent.Id,
+                Title = existingEvent.Title,
+                Description = existingEvent.Description,
+                StartAt = existingEvent.StartAt,
+                EndAt = existingEvent.EndAt,
+                TotalSeats = existingEvent.TotalSeats,
+                AvailableSeats = existingEvent.AvailableSeats
+            };
         }
 
         public async Task<bool> RemoveEventAsync(Guid eventId)
         {
-            await GetEventAsync(eventId);
+            await GetEventEntityAsync(eventId);
             return await _eventStore.DeleteAsync(eventId);
         }
 
