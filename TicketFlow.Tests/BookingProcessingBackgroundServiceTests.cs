@@ -30,13 +30,8 @@ namespace TicketFlow.Tests
             var bookingStore = new InMemoryBookingStore();
             var eventStore = new InMemoryEventStore();
 
-            var eventItem = Event.Create(
-                "Тестовое событие",
-                "Описание",
-                DateTime.UtcNow.AddDays(1),
-                DateTime.UtcNow.AddDays(1).AddHours(2),
-                10
-            );
+            var eventItem = TestHelpers.CreateTestEvent(2);
+
             await eventStore.AddAsync(eventItem);
 
             var booking = new Booking(eventItem.Id);
@@ -58,7 +53,6 @@ namespace TicketFlow.Tests
             {
             }
 
-            // Assert
             var processedBooking = (await bookingStore.GetAllAsync()).First();
 
             Assert.Equal(BookingStatus.Confirmed, processedBooking.Status);
@@ -130,13 +124,8 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var bookingService = new BookingService(bookingStore, eventStore);
 
-            var eventItem = Event.Create(
-                "Конкурентный Концерт",
-                "Описание",
-                DateTime.UtcNow.AddDays(1),
-                DateTime.UtcNow.AddDays(1).AddHours(2),
-                1
-            );
+            var eventItem = TestHelpers.CreateTestEvent(1);
+
             await eventStore.AddAsync(eventItem);
 
             var firstBooking = await bookingService.CreateBookingAsync(eventItem.Id);

@@ -7,14 +7,10 @@ namespace TicketFlow.Tests
 {
     public class BookingServiceTests
     {
-        private readonly Event eventItem = Event.Create
-        (
-            "Концерт классической музыки",
-            "Вечер Бетховена в филармонии",
-            new DateTime(2026, 06, 01, 19, 0, 0),
-            new DateTime(2026, 06, 01, 21, 0, 0),
-            2
-        );
+        private static Event CreateTestEvent(int totalSeats)
+        {
+            return TestHelpers.CreateTestEvent(totalSeats);
+        }
 
         [Fact]
         public async Task CreateBooking_ShouldReturnPendingBooking_WhenEventExists()
@@ -22,6 +18,7 @@ namespace TicketFlow.Tests
             var store = new InMemoryBookingStore();
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
+            var eventItem = CreateTestEvent(2);
 
             var eventId = Guid.NewGuid();
             eventItem.Id = eventId;
@@ -43,6 +40,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -59,6 +57,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -90,6 +89,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
             var eventId = Guid.NewGuid();
+            var eventItem = CreateTestEvent(2);
             eventItem.Id = eventId;
             await eventStore.AddAsync(eventItem);
 
@@ -124,14 +124,8 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
 
-            var eventItem = new Event
-            {
-                Id = Guid.NewGuid(),
-                Title = "Тестовое событие",
-                StartAt = DateTime.UtcNow,
-                EndAt = DateTime.UtcNow.AddHours(2),
-                TotalSeats = 1,
-            };
+            var eventItem = CreateTestEvent(1);
+
             await eventStore.AddAsync(eventItem);
             await eventStore.DeleteAsync(eventItem.Id);
 
@@ -146,13 +140,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
 
-            var eventItem = Event.Create(
-                "Тестовое событие",
-                "Описание тестового события",
-                DateTime.UtcNow,
-                DateTime.UtcNow.AddHours(2),
-                10
-            );
+            var eventItem = CreateTestEvent(10);
 
             await eventStore.AddAsync(eventItem);
 
@@ -169,13 +157,7 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
 
-            var eventItem = Event.Create(
-                "Тестовое событие",
-                "Описание тестового события",
-                DateTime.UtcNow,
-                DateTime.UtcNow.AddHours(2),
-                1
-            );
+            var eventItem = CreateTestEvent(1);
 
             await eventStore.AddAsync(eventItem);
 
@@ -192,21 +174,14 @@ namespace TicketFlow.Tests
             var eventStore = new InMemoryEventStore();
             var service = new BookingService(store, eventStore);
 
-            var eventItem = Event.Create(
-                "Тестовое событие",
-                "Описание тестового события",
-                DateTime.UtcNow,
-                DateTime.UtcNow.AddHours(2),
-                5
-            );
+            var eventItem = CreateTestEvent(5);
 
             await eventStore.AddAsync(eventItem);
 
             var tasks = new List<Task>();
             for (int i = 0; i < 20; i++)
             {
-                tasks.Add(service.CreateBookingAsync(eventItem.Id));
-
+                tasks.Add(Task.Run(() => service.CreateBookingAsync(eventItem.Id)));
             }
 
             var exception = await Assert.ThrowsAsync<NoAvailableSeatsException>(async () =>
@@ -229,20 +204,14 @@ namespace TicketFlow.Tests
             var service = new BookingService(store, eventStore);
             int seats = 10;
 
-            var eventItem = Event.Create(
-                "Тестовое событие",
-                "Описание тестового события",
-                DateTime.UtcNow,
-                DateTime.UtcNow.AddHours(2),
-                seats
-            );
+            var eventItem = CreateTestEvent(seats);
 
             await eventStore.AddAsync(eventItem);
 
             var tasks = new List<Task>();
             for (int i = 0; i < seats; i++)
             {
-                tasks.Add(service.CreateBookingAsync(eventItem.Id));
+                tasks.Add(Task.Run(() => service.CreateBookingAsync(eventItem.Id)));
             }
 
             await Task.WhenAll(tasks);
