@@ -1,5 +1,7 @@
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TicketFlow.DataAccess;
 using TicketFlow.Middlewares;
 using TicketFlow.Models;
 using TicketFlow.Models.Store;
@@ -13,6 +15,11 @@ namespace TicketFlow
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+            builder.Services.AddDbContext<AppDbContext>(options =>
+                options.UseNpgsql(connectionString));
 
             // Add services to the container.
             builder.Services.AddSingleton<IInMemoryStore<Event>, InMemoryEventStore>();

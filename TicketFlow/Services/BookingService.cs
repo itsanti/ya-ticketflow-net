@@ -1,26 +1,24 @@
-﻿using TicketFlow.Exceptions;
+﻿using Microsoft.EntityFrameworkCore;
+using TicketFlow.DataAccess;
+using TicketFlow.Exceptions;
 using TicketFlow.Models;
-using TicketFlow.Models.Store;
 
 namespace TicketFlow.Services
 {
     public class BookingService(
-        IInMemoryStore<Booking> store,
-        IInMemoryStore<Event> eventStore
+        AppDbContext context
         ) : IBookingService
     {
-        private readonly IInMemoryStore<Booking> _bookingStore = store;
-        private readonly IInMemoryStore<Event> _eventStore = eventStore;
+        private readonly AppDbContext _context = context;
 
-        private readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
+        private static readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
 
         public async Task<Booking> CreateBookingAsync(Guid eventId)
         {
             await _bookingSemaphore.WaitAsync();
             try
             {
-                var events = await _eventStore.FindAsync(e => e.Id == eventId);
-                var eventItem = events.FirstOrDefault();
+                var eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == eventId);
 
                 if (eventItem == null)
                 {
@@ -35,8 +33,8 @@ namespace TicketFlow.Services
                 }
                 var booking = new Booking(eventId);
 
-                await _eventStore.UpdateAsync(eventItem);
-                await _bookingStore.AddAsync(booking);
+                await _context.Bookings.AddAsync(booking);
+                await _context.SaveChangesAsync();
 
                 return booking;
             }
@@ -48,8 +46,9 @@ namespace TicketFlow.Services
 
         public async Task<Booking> GetBookingByIdAsync(Guid bookingId)
         {
-            var bookings = await _bookingStore.FindAsync(b => b.Id == bookingId);
-            var booking = bookings.FirstOrDefault();
+            var booking = await _context.Bookings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == bookingId);
             if (booking == null)
             {
                 throw new NotFoundException($"Booking with ID {bookingId} not found.");
