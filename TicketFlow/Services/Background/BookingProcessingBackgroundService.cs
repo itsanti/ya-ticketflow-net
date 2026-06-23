@@ -37,6 +37,10 @@ namespace TicketFlow.Services.Background
                     var tasks = pendingBookingIds.Select(id => ProcessBookingAsync(id, stoppingToken));
                     await Task.WhenAll(tasks);
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error occurred during booking polling.");

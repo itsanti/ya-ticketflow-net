@@ -55,7 +55,7 @@ namespace TicketFlow.Models
 
         public void ReleaseSeats(int count = 1)
         {
-            AvailableSeats += count;
+            AvailableSeats = Math.Min(TotalSeats, AvailableSeats + count);
         }
     }
 }
