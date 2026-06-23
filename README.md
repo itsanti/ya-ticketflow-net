@@ -18,6 +18,7 @@
 ## 🏗 Структура проекта
 ```text
 ├── TicketFlow/
+│   ├── DataAccess/       # EF-инфраструктура
 │   ├── Controllers/        # Эндпоинты REST API (EventsController, BookingsController)
 │   ├── DTOs
 │   │   ├── Bookings/       # Объекты ответа для бронирований (BookingResponseDto)
