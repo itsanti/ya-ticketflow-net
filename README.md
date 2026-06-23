@@ -13,12 +13,15 @@
 - **Спринт 2**: Глобальная обработка ошибок, фильтрация, пагинация и Unit-тесты ✅
 - **Спринт 3**: Асинхронное бронирование билетов, фоновая обработка и многопоточные хранилища ✅
 - **Спринт 4**: Потокобезопасность, параллельная обработка заявок и защита от овербукинга (Rich Domain Model, Lock, SemaphoreSlim) ✅
+- **Спринт 5**: Переход на PostgreSQL и Entity Framework Core, настройка `AppDbContext`, Fluent API-маппинг, обновление сервисов и тестов ✅
 ---
 
 ## 🏗 Структура проекта
 ```text
 ├── TicketFlow/
 │   ├── DataAccess/       # EF-инфраструктура
+│   │   ├── AppDbContext.cs      # DbContext приложения
+│   │   └── Configurations/      # Fluent API-конфигурации сущностей
 │   ├── Controllers/        # Эндпоинты REST API (EventsController, BookingsController)
 │   ├── DTOs
 │   │   ├── Bookings/       # Объекты ответа для бронирований (BookingResponseDto)
@@ -27,7 +30,6 @@
 │   ├── Exceptions/         # Пользовательские исключения (вкл. NoAvailableSeatsException)
 │   ├── Middlewares/        # Кастомные middleware (логирование запросов, глобальный перехват ошибок)
 │   ├── Models/             # Доменные сущности с богатой бизнес-логикой (Event, Booking)
-│   │   └── Store/          # Потокобезопасные асинхронные хранилища (IInMemoryStore)
 │   ├── Services/           # Прикладной уровень (IEventService, EventService, BookingService)
 │   │   └── Background/     # Фоновые службы с параллельной обработкой (BookingProcessingBackgroundService)
 │   ├── Program.cs          # Точка входа и конфигурация приложения
@@ -40,7 +42,6 @@
 ## ✨ Реализованный функционал
 
 - [x] CRUD операции для мероприятий (`Event`)
-- [x] Хранение данных в памяти (`List<Event>`)
 - [x] Бизнес-логика вынесена в сервис через DI
 - [x] Валидация входных данных (обязательные поля, `EndAt > StartAt`)
 - [x] Единый формат ошибок через Problem Details
@@ -50,8 +51,6 @@
 - [x] Фильтрация событий по названию (регистронезависимая) и диапазону дат
 - [x] Пагинация результатов (страница, размер страницы)
 - [x] Покрытие бизнес-логики `EventService` юнит-тестами (успешные и неуспешные сценарии)
-- [x]  Асинхронная архитектура доступа к данным через интерфейс `IInMemoryStore<T>`
-- [x]  Обеспечение потокобезопасности хранилищ с использованием примитива `System.Threading.Lock` (.NET 10)
 - [x]  Паттерн «быстрый ответ + отложенная обработка» для создания бронирований
 - [x]  Фоновый процессор заявок на базе `BackgroundService` с обработкой отмены (`CancellationToken`)
 - [x]  Валидация бронирований на уровне сервиса (проверка существования и удаления событий)
@@ -59,6 +58,14 @@
 - [x] Синхронизация критических секций: защита от овербукинга с помощью `SemaphoreSlim` при конкурентном создании брони
 - [x] Параллельная обработка фоновых задач: использование `Task.WhenAll` и `SemaphoreSlim` для потокобезопасного конкурентного обновления хранилища
 - [x] Тестирование конкурентности: написаны юнит-тесты, симулирующие одновременные параллельные запросы к сервису для проверки потокобезопасности
+- [x] Хранение данных в PostgreSQL
+- [x] Работа с базой данных через Entity Framework Core
+- [x] `AppDbContext` с `DbSet<Event>` и `DbSet<Booking>`
+- [x] Fluent API-маппинг сущностей через `IEntityTypeConfiguration<T>`
+- [x] Автоматическое создание схемы БД при запуске через `EnsureCreated`
+- [x] Адаптация сервисов для работы напрямую с `AppDbContext`
+- [x] Адаптация фонового сервиса для работы со scoped-зависимостями через `IServiceScopeFactory`
+- [x] Тесты сервисов на EF Core InMemory provider
 ---
 
 ## 🛠 Технологический стек
@@ -66,6 +73,10 @@
 - **Runtime**: .NET 10 (C# 13)
 - **Framework**: ASP.NET Core Web API
 - **API Documentation**: Swashbuckle (Swagger UI)
+- **Database**: PostgreSQL
+- **ORM**: Entity Framework Core
+- **EF Provider**: Npgsql.EntityFrameworkCore.PostgreSQL
+- **Tests Database Provider**: Microsoft.EntityFrameworkCore.InMemory
 
 ---
 
@@ -74,14 +85,29 @@
 ### Предварительные требования
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+- PostgreSQL 16+ или Docker
+- Docker Compose, если база запускается через `docker compose`
 
-### Зависимости
+### Используемые NuGet-пакеты
 
 ```bash
-dotnet add package Swashbuckle.AspNetCore # Swagger UI
-dotnet add ./TicketFlow/TicketFlow.csproj package Microsoft.EntityFrameworkCore
-dotnet add ./TicketFlow/TicketFlow.csproj package Npgsql.EntityFrameworkCore.PostgreSQL
-dotnet add ./TicketFlow.Tests/TicketFlow.Tests.csproj package Microsoft.EntityFrameworkCore.InMemory
+- Swashbuckle.AspNetCore
+- Microsoft.EntityFrameworkCore
+- Npgsql.EntityFrameworkCore.PostgreSQL
+- Microsoft.EntityFrameworkCore.InMemory
+```
+
+### Настройка подключения к PostgreSQL
+
+Приложение читает строку подключения по ключу DefaultConnection и регистрирует AppDbContext через PostgreSQL-провайдер.
+Строка подключения задаётся в `TicketFlow/appsettings.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres"
+  }
+}
 ```
 
 ### Установка и запуск
@@ -91,28 +117,44 @@ dotnet add ./TicketFlow.Tests/TicketFlow.Tests.csproj package Microsoft.EntityFr
    git clone https://github.com/itsanti/ticketflow.git
    cd ticketflow
    ```
+
+2. Запустите PostgreSQL:
+   ```bash
+   docker compose up -d
+ ```
  
-2. **Перейдите в папку проекта:**
+3. **Перейдите в папку проекта:**
    ```bash
    cd TicketFlow
    ```
  
-3. **Соберите проект:**
+4. **Соберите проект:**
    ```bash
    dotnet build
    ```
  
-4. **Запустите проект:**
+5. **Запустите проект:**
    ```bash
-   dotnet run
+   dotnet run --project ./TicketFlow/TicketFlow.csproj
    ```
  
-5. **Откройте Swagger UI:**
+6. **Откройте Swagger UI:**
    ```
    https://localhost:7241/swagger
    ```
+   
+### Создание схемы базы данных
 
-## 📡 API Endpoints
+При запуске приложения EF Core автоматически создаёт схему базы данных через `Database.EnsureCreated()`.
+
+Создаются таблицы:
+
+- `events`
+- `bookings`
+
+Метод `EnsureCreated()` используется для учебного проекта и не требует ручного запуска миграций. Если в будущем проект будет переведён на миграции, потребуется заменить `EnsureCreated()` на `Migrate()` и пересоздать схему или применить миграции.
+
+### 📡 API Endpoints
  
 | Метод    | Путь              | Описание                        | Статусы           |
 |----------|-------------------|---------------------------------|-------------------|
@@ -133,9 +175,19 @@ dotnet add ./TicketFlow.Tests/TicketFlow.Tests.csproj package Microsoft.EntityFr
   "title": "Tech Conference 2026",
   "description": "Ежегодная конференция по современным технологиям",
   "startAt": "2026-04-15T10:00:00",
-  "endAt": "2026-04-17T18:00:00"
+  "endAt": "2026-04-17T18:00:00",
+  "totalSeats": 100
 }
 ```
+
+### Пример ответа (201 Created)
+```json
+"3fa85f64-5717-4562-b3fc-2c963f66afa6"
+```
+
+### Пример запроса (GET /events/{id})
+
+После создания событие можно получить через GET `/events/{id}`.
  
 ### Пример ответа (200 OK)
  
@@ -145,7 +197,9 @@ dotnet add ./TicketFlow.Tests/TicketFlow.Tests.csproj package Microsoft.EntityFr
   "title": "Tech Conference 2026",
   "description": "Ежегодная конференция по современным технологиям",
   "startAt": "2026-04-15T10:00:00",
-  "endAt": "2026-04-17T18:00:00"
+  "endAt": "2026-04-17T18:00:00",
+  "totalSeats": 100,
+  "availableSeats": 100
 }
 ```
 
@@ -162,8 +216,10 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
       "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "title": "Tech Conference 2026",
       "description": "Ежегодная конференция по современным технологиям",
-      "startAt": "2026-04-15T10:00:00",
-      "endAt": "2026-04-17T18:00:00"
+      "startAt": "2026-04-15T10:00:00Z",
+      "endAt": "2026-04-17T18:00:00Z",
+      "totalSeats": 100,
+      "availableSeats": 100
     }
   ],
   "totalCount": 1,
@@ -192,6 +248,17 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 ## 🧪 Тестирование
 
 Проект покрыт юнит-тестами с использованием фреймворка **xUnit** и библиотеки **Moq** для изоляции зависимостей.
+
+В тестах используется `Microsoft.EntityFrameworkCore.InMemory`.
+
+Для каждого набора тестов создаётся уникальная InMemory-база:
+
+```csharp
+var dbName = Guid.NewGuid().ToString();
+
+services.AddDbContext<AppDbContext>(options =>
+    options.UseInMemoryDatabase(dbName));
+```
 
 **Основные тестовые наборы:**
 1. `EventServiceTests` — проверка бизнес-логики управления событиями (валидация дат, генерация ID, обработка исключений `NotFoundException`).
@@ -227,25 +294,31 @@ dotnet test
 
 ### ⚙️ Логика фоновой обработки (Background Processing)
 Для реализации паттерна «быстрый ответ + отложенная обработка» запущен фоновый хостинг-сервис `BookingProcessingBackgroundService`:
-1. Раз в **5 секунд** сервис опрашивает `InMemoryBookingStore` и извлекает все бронирования со статусом `Pending`.
-2. Для каждой найденной заявки имитируется интеграция с внешней системой бронирования с искусственной задержкой в **2 секунды**.
-3. На основе бизнес-правил внутри метода `ProcessBookingAsync` распределяются исходы обработки (бронь переводится в статус `Confirmed`, либо в `Rejected`, если целевое событие не найдено или произошла ошибка), фиксируется системное время в `ProcessedAt`, а изменения асинхронно сохраняются в хранилище.
-4. Служба спроектирована с учетом отказоустойчивости: ошибки обработки отдельных записей изолированы внутри безопасного блока `try-catch`, а завершение работы приложения координируется через `CancellationToken`.
+1. Раз в 5 секунд сервис создаёт scope через `IServiceScopeFactory`, получает `AppDbContext` и извлекает идентификаторы бронирований со статусом `Pending`.
+2. Для каждой найденной заявки создаётся отдельный scope, чтобы каждая задача работала со своим экземпляром `AppDbContext`.
+3. После искусственной задержки в 2 секунды бронь переводится в `Confirmed`, либо в `Rejected`, если связанное событие не найдено или произошла ошибка.
+4. Изменения сохраняются через `SaveChangesAsync`.
 
 > ⏳ **Важное примечание по таймингам:** Из-за интервала опроса хранилища (5 сек) и времени выполнения внешней интеграции (2 сек), суммарное ожидание смены статуса с `Pending` на финальный (`Confirmed`/`Rejected`) после выполнения POST-запроса может занимать **от 2 до 7 секунд**. Для демонстрационных целей текущего спринта такие задержки являются ожидаемыми и нормальными.
 
 ## 🔒 Потокобезопасность и многопоточность
 
-Для обеспечения корректной работы системы при высокой конкурентной нагрузке (когда сотни пользователей одновременно пытаются забронировать последнее место), были применены следующие примитивы синхронизации:
+Для защиты от овербукинга при конкурентном создании бронирований используется `static SemaphoreSlim` в `BookingService`.
 
-1. **`SemaphoreSlim` в `BookingService`:**
-   * **Зачем:** Защищает критическую секцию «проверка доступных мест внутри события (`TryReserveSeats`) + создание объекта брони».
-   * **Почему именно `SemaphoreSlim`:** Проверка мест и создание объекта происходят в памяти синхронно. Использование гарантирует, что в один момент времени только один поток сможет списать место со счётчика события, полностью предотвращая овербукинг на этапе приёма заявок.
+`BookingService` зарегистрирован как scoped-сервис, поэтому обычный instance-семафор защищал бы только один экземпляр сервиса. `static SemaphoreSlim` синхронизирует критическую секцию между разными экземплярами `BookingService` внутри одного процесса приложения.
 
-2. **`SemaphoreSlim` в `BookingProcessingBackgroundService`:**
-   * **Зачем:** Выступает в роли асинхронного мьютекса (счетчик установлен в 1), защищая критическую секцию обновления статуса брони и возврата мест в памяти от состояния гонки (Race Condition) при конкурентной записи.
-   * **Почему именно `SemaphoreSlim`:** В отличие от `lock`, семафор поддерживает асинхронное ожидание (`WaitAsync(stoppingToken)`) и позволяет безопасно использовать оператор `await` внутри защищаемой секции при обращении к хранилищам (`_store.UpdateAsync`).
-   * **Параллельность обработки:** Имитация внешнего вызова (`Task.Delay`) вынесена *до* захвата семафора, что позволяет задержкам выполняться параллельно для десятков заявок одновременно, тогда как финальная запись в базу выстраивается в безопасную строгую очередь.
+Критическая секция включает:
+
+1. загрузку события из базы данных;
+2. проверку доступных мест через `TryReserveSeats()`;
+3. уменьшение `AvailableSeats`;
+4. создание новой брони;
+5. сохранение изменений через `SaveChangesAsync()`.
+
+Так как `AppDbContext` отслеживает и изменённое событие, и новую бронь, один вызов `SaveChangesAsync()` сохраняет оба изменения.
+
+`BookingProcessingBackgroundService` не хранит общий `DbContext` и не использует общий in-memory store. Для работы со scoped-зависимостями он использует `IServiceScopeFactory`: сначала создаёт scope для получения списка `Pending`-бронирований, затем отдельный scope для обработки каждой брони.
+
 
 
 ### 🔄 Пример сквозного сценария использования
@@ -312,7 +385,7 @@ dotnet test
 3. Благодаря использованию конструкции `SemaphoreSlim` в `BookingService`, запросы выстраиваются в строгую очередь на уровне процессорных потоков.
 4. Первые **5 потоков** (если доступно 5 мест) успешно вызывают `TryReserveSeats()`, уменьшают счетчик до 0 и получают ответ `202 Accepted`. Их брони уходят в статус `Pending`.
 5. Остальные **15 запросов** мгновенно получают отказ на уровне бизнес-логики модели, и API возвращает им `409 Conflict`.
-6. Фоновый сервис параллельно (с ограничением через `SemaphoreSlim`) переводит эти 5 успешных броней в статус `Confirmed`.
+6. Фоновый сервис параллельно переводит эти 5 успешных броней в статус `Confirmed`, создавая отдельный scope и отдельный `AppDbContext` для обработки каждой брони.
 7. Если в процессе работы фонового сервиса с одной из этих 5 броней произойдет непредвиденная ошибка (исключение), воркер переведет бронь в статус `Rejected` и автоматически вызовет `eventItem.ReleaseSeats()`, возвращая место обратно в продажу для других пользователей.
 
 ---

@@ -42,7 +42,15 @@ namespace TicketFlow.Services.Background
                     _logger.LogError(ex, "Error occurred during booking polling.");
                 }
 
-                await Task.Delay(_pollingInterval, stoppingToken);
+                try
+                {
+                    await Task.Delay(_pollingInterval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
             }
 
             _logger.LogInformation("Booking processing background service is stopping.");
