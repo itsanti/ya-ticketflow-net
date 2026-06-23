@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TicketFlow.DataAccess;
 using TicketFlow.Middlewares;
-using TicketFlow.Models;
-using TicketFlow.Models.Store;
 using TicketFlow.Services;
 using TicketFlow.Services.Background;
 
@@ -22,10 +20,7 @@ namespace TicketFlow
                 options.UseNpgsql(connectionString));
 
             // Add services to the container.
-            builder.Services.AddSingleton<IInMemoryStore<Event>, InMemoryEventStore>();
             builder.Services.AddScoped<IEventService, EventService>();
-
-            builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
             builder.Services.AddScoped<IBookingService, BookingService>();
 
             builder.Services.AddHostedService<BookingProcessingBackgroundService>();
