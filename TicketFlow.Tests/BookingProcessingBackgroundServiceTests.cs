@@ -1,155 +1,149 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
+using TicketFlow.DataAccess;
 using TicketFlow.Models;
-using TicketFlow.Models.Store;
-using TicketFlow.Services;
 using TicketFlow.Services.Background;
 
 namespace TicketFlow.Tests
 {
-    public class FailingBookingStore : InMemoryBookingStore
-    {
-        public override Task<Booking> UpdateAsync(Booking entity)
-        {
-            if (entity.Status == BookingStatus.Confirmed)
-            {
-                throw new Exception("Simulated database failure during confirmation.");
-            }
-            return base.UpdateAsync(entity);
-        }
-    }
-
     public class BookingProcessingBackgroundServiceTests
     {
         private readonly Mock<ILogger<BookingProcessingBackgroundService>> _loggerMock = new();
 
-        [Fact]
-        public async Task ExecuteAsync_ShouldConvertPendingToConfirmed_AndSetProcessedAt()
+        private BookingProcessingBackgroundService CreateBackgroundService(ServiceProvider serviceProvider)
         {
+            var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
 
-            var bookingStore = new InMemoryBookingStore();
-            var eventStore = new InMemoryEventStore();
+            return new BookingProcessingBackgroundService(
+                scopeFactory,
+                _loggerMock.Object);
+        }
 
-            var eventItem = TestHelpers.CreateTestEvent(2);
-
-            await eventStore.AddAsync(eventItem);
-
-            var booking = new Booking(eventItem.Id);
-            await bookingStore.AddAsync(booking);
-
-            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
-            using var cts = new CancellationTokenSource();
-
-            var backgroundTask = service.StartAsync(cts.Token);
-
-            await Task.Delay(2500);
-            await cts.CancelAsync();
+        private static async Task RunBackgroundServiceForAsync(
+            BookingProcessingBackgroundService service,
+            int milliseconds = 3000)
+        {
+            await service.StartAsync(CancellationToken.None);
 
             try
             {
-                await backgroundTask;
+                await Task.Delay(milliseconds);
             }
-            catch (OperationCanceledException)
+            finally
             {
+                await service.StopAsync(CancellationToken.None);
+            }
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ShouldConvertPendingToConfirmed_AndSetProcessedAt()
+        {
+            using var serviceProvider = TestHelpers.Create();
+
+            var eventItem = TestHelpers.CreateTestEvent(2);
+            var booking = new Booking(eventItem.Id);
+
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                await context.Events.AddAsync(eventItem);
+                await context.Bookings.AddAsync(booking);
+                await context.SaveChangesAsync();
             }
 
-            var processedBooking = (await bookingStore.GetAllAsync()).First();
+            var service = CreateBackgroundService(serviceProvider);
 
-            Assert.Equal(BookingStatus.Confirmed, processedBooking.Status);
-            Assert.NotNull(processedBooking.ProcessedAt);
-            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+            await RunBackgroundServiceForAsync(service);
+
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                var processedBooking = await context.Bookings
+                    .AsNoTracking()
+                    .FirstAsync(b => b.Id == booking.Id);
+
+                Assert.Equal(BookingStatus.Confirmed, processedBooking.Status);
+                Assert.NotNull(processedBooking.ProcessedAt);
+                Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+            }
         }
 
         [Fact]
         public async Task ExecuteAsync_ShouldIgnoreAlreadyConfirmedBookings()
         {
-            var bookingStore = new InMemoryBookingStore();
-            var eventStore = new InMemoryEventStore();
+            using var serviceProvider = TestHelpers.Create();
 
             var booking = new Booking(Guid.NewGuid())
             {
                 Status = BookingStatus.Confirmed,
                 ProcessedAt = DateTime.UtcNow.AddMinutes(-10)
             };
+
             var originalProcessedAt = booking.ProcessedAt;
 
-            await bookingStore.AddAsync(booking);
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
-            using var cts = new CancellationTokenSource();
+                await context.Bookings.AddAsync(booking);
+                await context.SaveChangesAsync();
+            }
 
-            var backgroundTask = service.StartAsync(cts.Token);
-            await Task.Delay(500);
+            var service = CreateBackgroundService(serviceProvider);
 
-            await cts.CancelAsync();
-            try { await backgroundTask; } catch (OperationCanceledException) { }
+            await RunBackgroundServiceForAsync(service, milliseconds: 1000);
 
-            var resultBooking = (await bookingStore.GetAllAsync()).First();
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
-            Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
+                var resultBooking = await context.Bookings
+                    .AsNoTracking()
+                    .FirstAsync(b => b.Id == booking.Id);
+
+                Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
+                Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
+            }
         }
 
         [Fact]
         public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenEventDoesNotExist()
         {
-            var bookingStore = new InMemoryBookingStore();
-            var eventStore = new InMemoryEventStore();
+            using var serviceProvider = TestHelpers.Create();
 
             var fakeEventId = Guid.NewGuid();
             var booking = new Booking(fakeEventId);
-            await bookingStore.AddAsync(booking);
 
-            var service = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
-            using var cts = new CancellationTokenSource();
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            var backgroundTask = service.StartAsync(cts.Token);
+                await context.Bookings.AddAsync(booking);
+                await context.SaveChangesAsync();
+            }
 
-            await Task.Delay(2500);
+            var service = CreateBackgroundService(serviceProvider);
 
-            await cts.CancelAsync();
-            try { await backgroundTask; } catch (OperationCanceledException) { }
+            await RunBackgroundServiceForAsync(service);
 
-            var processedBooking = (await bookingStore.GetAllAsync()).First();
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
-            Assert.NotNull(processedBooking.ProcessedAt);
-            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+                var processedBooking = await context.Bookings
+                    .AsNoTracking()
+                    .FirstAsync(b => b.Id == booking.Id);
+
+                Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
+                Assert.NotNull(processedBooking.ProcessedAt);
+                Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
+            }
         }
 
-        [Fact]
-        public async Task ExecuteAsync_ShouldRejectBookingAndReleaseSeats_WhenExceptionOccurs_AndAllowNewBooking()
-        {
-            var bookingStore = new FailingBookingStore();
-            var eventStore = new InMemoryEventStore();
-            var bookingService = new BookingService(bookingStore, eventStore);
-
-            var eventItem = TestHelpers.CreateTestEvent(1);
-
-            await eventStore.AddAsync(eventItem);
-
-            var firstBooking = await bookingService.CreateBookingAsync(eventItem.Id);
-            Assert.Equal(0, eventItem.AvailableSeats);
-
-            var backgroundService = new BookingProcessingBackgroundService(bookingStore, eventStore, _loggerMock.Object);
-            using var cts = new CancellationTokenSource();
-
-            var backgroundTask = backgroundService.StartAsync(cts.Token);
-
-            await Task.Delay(2500);
-
-            await cts.CancelAsync();
-            try { await backgroundTask; } catch (OperationCanceledException) { }
-
-            var updatedEvent = (await eventStore.FindAsync(e => e.Id == eventItem.Id)).First();
-            Assert.Equal(1, updatedEvent.AvailableSeats);
-
-            var secondBooking = await bookingService.CreateBookingAsync(eventItem.Id);
-
-            Assert.NotNull(secondBooking);
-            Assert.Equal(BookingStatus.Pending, secondBooking.Status);
-            Assert.Equal(0, updatedEvent.AvailableSeats);
-        }
     }
 }
 

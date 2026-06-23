@@ -1,4 +1,8 @@
-﻿using TicketFlow.Models;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using TicketFlow.DataAccess;
+using TicketFlow.Models;
+using TicketFlow.Services;
 
 namespace TicketFlow.Tests
 {
@@ -13,6 +17,21 @@ namespace TicketFlow.Tests
                 DateTime.UtcNow.AddDays(1).AddHours(2),
                 totalSeats
             );
+        }
+
+        public static ServiceProvider Create()
+        {
+            var dbName = Guid.NewGuid().ToString();
+
+            var services = new ServiceCollection();
+
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseInMemoryDatabase(dbName));
+
+            services.AddScoped<IEventService, EventService>();
+            services.AddScoped<IBookingService, BookingService>();
+
+            return services.BuildServiceProvider();
         }
     }
 }

@@ -1,8 +1,8 @@
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TicketFlow.DataAccess;
 using TicketFlow.Middlewares;
-using TicketFlow.Models;
-using TicketFlow.Models.Store;
 using TicketFlow.Services;
 using TicketFlow.Services.Background;
 
@@ -14,11 +14,13 @@ namespace TicketFlow
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
-            builder.Services.AddSingleton<IInMemoryStore<Event>, InMemoryEventStore>();
-            builder.Services.AddScoped<IEventService, EventService>();
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-            builder.Services.AddSingleton<IInMemoryStore<Booking>, InMemoryBookingStore>();
+            builder.Services.AddDbContext<AppDbContext>(options =>
+                options.UseNpgsql(connectionString));
+
+            // Add services to the container.
+            builder.Services.AddScoped<IEventService, EventService>();
             builder.Services.AddScoped<IBookingService, BookingService>();
 
             builder.Services.AddHostedService<BookingProcessingBackgroundService>();
@@ -51,6 +53,12 @@ namespace TicketFlow
             builder.Services.AddSwaggerGen();
 
             var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                db.Database.EnsureCreated();
+            }
 
             app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 

@@ -18,6 +18,13 @@ namespace TicketFlow.Models
 
         public int AvailableSeats { get; private set; }
 
+        public ICollection<Booking> Bookings { get; private set; } = [];
+
+        private Event()
+        {
+            Title = null!;
+        }
+
         public static Event Create(string title, string? description, DateTime startAt, DateTime endAt, int totalSeats)
         {
             if (totalSeats <= 0)
@@ -48,7 +55,7 @@ namespace TicketFlow.Models
 
         public void ReleaseSeats(int count = 1)
         {
-            AvailableSeats += count;
+            AvailableSeats = Math.Min(TotalSeats, AvailableSeats + count);
         }
     }
 }
