@@ -78,6 +78,9 @@
 
 ```bash
 dotnet add package Swashbuckle.AspNetCore # Swagger UI
+dotnet add ./TicketFlow/TicketFlow.csproj package Microsoft.EntityFrameworkCore
+dotnet add ./TicketFlow/TicketFlow.csproj package Npgsql.EntityFrameworkCore.PostgreSQL
+dotnet add ./TicketFlow.Tests/TicketFlow.Tests.csproj package Microsoft.EntityFrameworkCore.InMemory
 ```
 
 ### Установка и запуск
