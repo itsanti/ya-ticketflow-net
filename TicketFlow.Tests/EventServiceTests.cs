@@ -1,6 +1,6 @@
-﻿using TicketFlow.DTOs.Events;
+﻿using Microsoft.Extensions.DependencyInjection;
+using TicketFlow.DTOs.Events;
 using TicketFlow.Exceptions;
-using TicketFlow.Models.Store;
 using TicketFlow.Services;
 
 namespace TicketFlow.Tests
@@ -38,8 +38,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task AddEvent_ShouldReturnGuid_AndStoreEventInService()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var eventItem = _events.First();
 
@@ -55,8 +57,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldReturnAllStoredEvents_WhenNoFiltersApplied()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events)
             {
@@ -74,8 +78,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvent_ShouldReturnCorrectEvent_WhenIdExists()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var _event = _events.First();
             var id = await service.AddEventAsync(_event);
@@ -90,8 +96,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task UpdateEvent_ShouldModifyStoredEvent_WhenIdExists()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var _event = _events.First();
             var id = await service.AddEventAsync(_event);
@@ -116,8 +124,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task RemoveEvent_ShouldReturnTrue_AndRemoveEventFromService()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var id = await service.AddEventAsync(_events.First());
 
@@ -130,8 +140,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldFilterByTitle_IgnoringCase()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events)
             {
@@ -153,8 +165,10 @@ namespace TicketFlow.Tests
         [InlineData("   ")]
         public async Task GetEvents_ShouldIgnoreTitleFilter_WhenTitleIsNullOrWhiteSpace(string? emptyTitle)
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events) await service.AddEventAsync(dto);
 
@@ -168,8 +182,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldFilterByDateRange()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events)
             {
@@ -190,8 +206,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldIncludeEvent_WhenItStartsExactlyAtFromDate()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var targetDate = new DateTime(2026, 01, 01, 10, 0, 0);
             var dto = new CreateEventDto
@@ -212,8 +230,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldReturnCorrectPage_WithPagination()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events.Concat(_events))
             {
@@ -235,8 +255,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldReturnActualItemCountInPageSize()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events)
             {
@@ -259,8 +281,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvents_ShouldFilterByTitleAndDateCombined()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             foreach (var dto in _events)
             {
@@ -281,8 +305,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task GetEvent_ShouldThrowNotFoundException()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             await Assert.ThrowsAsync<NotFoundException>(() => service.GetEventAsync(Guid.NewGuid()));
         }
@@ -290,8 +316,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task UpdateEvent_ShouldThrowNotFoundException_WhenIdDoesNotExist()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var updateDto = new UpdateEventDto { Title = "New", StartAt = DateTime.Now, EndAt = DateTime.Now.AddHours(1), TotalSeats = 1 };
 
@@ -301,8 +329,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task AddEvent_ShouldThrowValidationException_WhenDatesAreInvalid()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var invalidDto = new CreateEventDto
             {
@@ -318,8 +348,10 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task UpdateEvent_ShouldThrowValidationException_WhenNewDatesAreInvalid()
         {
-            var store = new InMemoryEventStore();
-            var service = new EventService(store);
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
             var id = await service.AddEventAsync(_events.First());
             var invalidUpdate = new UpdateEventDto
