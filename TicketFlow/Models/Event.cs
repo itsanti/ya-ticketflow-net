@@ -18,6 +18,13 @@ namespace TicketFlow.Models
 
         public int AvailableSeats { get; private set; }
 
+        public ICollection<Booking> Bookings { get; private set; } = [];
+
+        private Event()
+        {
+            Title = null!;
+        }
+
         public static Event Create(string title, string? description, DateTime startAt, DateTime endAt, int totalSeats)
         {
             if (totalSeats <= 0)
