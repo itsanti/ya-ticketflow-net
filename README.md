@@ -95,6 +95,7 @@
 - Microsoft.EntityFrameworkCore
 - Npgsql.EntityFrameworkCore.PostgreSQL
 - Microsoft.EntityFrameworkCore.InMemory
+- Microsoft.EntityFrameworkCore.Design
 ```
 
 ### Настройка подключения к PostgreSQL
