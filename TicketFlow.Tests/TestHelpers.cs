@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.DataAccess;
+using TicketFlow.DataAccess.Repositories;
 using TicketFlow.Models;
 using TicketFlow.Services;
 
@@ -30,6 +31,8 @@ namespace TicketFlow.Tests
 
             services.AddScoped<IEventService, EventService>();
             services.AddScoped<IBookingService, BookingService>();
+            services.AddScoped<IEventRepository, EventRepository>();
+            services.AddScoped<IBookingRepository, BookingRepository>();
 
             return services.BuildServiceProvider();
         }
