@@ -34,7 +34,7 @@ namespace TicketFlow.Services
                 }),
                 TotalCount = totalCount,
                 Page = filters.Page,
-                PageSize = items.Count
+                PageSize = filters.PageSize
             };
         }
 

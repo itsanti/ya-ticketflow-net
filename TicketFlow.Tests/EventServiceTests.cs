@@ -275,7 +275,7 @@ namespace TicketFlow.Tests
 
             Assert.Single(result.Items);
             Assert.Equal(3, result.TotalCount);
-            Assert.Equal(1, result.PageSize);
+            Assert.Equal(2, result.PageSize);
         }
 
         [Fact]
