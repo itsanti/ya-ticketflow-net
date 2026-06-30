@@ -6,7 +6,7 @@
   <ItemGroup>
     <!-- App -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
-    <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.1" />
 
     <!-- EF Core -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />

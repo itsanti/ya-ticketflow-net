@@ -47,6 +47,8 @@ namespace TicketFlow.DataAccess.Repositories
             var totalCount = await query.CountAsync(ct);
 
             var items = await query
+                .OrderBy(e => e.StartAt)
+                .ThenBy(e => e.Id)
                 .Skip((filters.Page - 1) * filters.PageSize)
                 .Take(filters.PageSize)
                 .ToListAsync(ct);
