@@ -1,15 +1,16 @@
-﻿using Microsoft.EntityFrameworkCore;
-using TicketFlow.DataAccess;
+﻿using TicketFlow.DataAccess.Repositories;
 using TicketFlow.Exceptions;
 using TicketFlow.Models;
 
 namespace TicketFlow.Services
 {
     public class BookingService(
-        AppDbContext context
+        IEventRepository eventRepo,
+        IBookingRepository bookingRepo
         ) : IBookingService
     {
-        private readonly AppDbContext _context = context;
+        private readonly IEventRepository _eventRepo = eventRepo;
+        private readonly IBookingRepository _bookingRepo = bookingRepo;
 
         private static readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
 
@@ -18,7 +19,7 @@ namespace TicketFlow.Services
             await _bookingSemaphore.WaitAsync();
             try
             {
-                var eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == eventId);
+                var eventItem = await _eventRepo.GetByIdAsync(eventId);
 
                 if (eventItem == null)
                 {
@@ -33,8 +34,8 @@ namespace TicketFlow.Services
                 }
                 var booking = new Booking(eventId);
 
-                await _context.Bookings.AddAsync(booking);
-                await _context.SaveChangesAsync();
+                await _bookingRepo.AddAsync(booking);
+                await _bookingRepo.SaveChangesAsync();
 
                 return booking;
             }
@@ -46,9 +47,7 @@ namespace TicketFlow.Services
 
         public async Task<Booking> GetBookingByIdAsync(Guid bookingId)
         {
-            var booking = await _context.Bookings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(b => b.Id == bookingId);
+            var booking = await _bookingRepo.GetByIdAsNoTrackingAsync(bookingId);
             if (booking == null)
             {
                 throw new NotFoundException($"Booking with ID {bookingId} not found.");

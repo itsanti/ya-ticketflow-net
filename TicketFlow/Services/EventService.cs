@@ -1,5 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using TicketFlow.DataAccess;
+﻿using TicketFlow.DataAccess.Repositories;
 using TicketFlow.DTOs.Events;
 using TicketFlow.DTOs.Pagination;
 using TicketFlow.Exceptions;
@@ -9,39 +8,21 @@ namespace TicketFlow.Services
 {
     public class EventService : IEventService
     {
-        private readonly AppDbContext _context;
+        private readonly IEventRepository _eventRepo;
 
-        public EventService(AppDbContext context)
+        public EventService(IEventRepository eventRepo)
         {
-            _context = context;
+            _eventRepo = eventRepo;
         }
 
         public async Task<PaginatedResult<EventInfoDto>> GetEventsAsync(EventFiltersDto filters)
         {
-            IQueryable<Event> query = _context.Events.AsNoTracking();
 
-            if (!string.IsNullOrWhiteSpace(filters.Title))
+            var (items, totalCount) = await _eventRepo.GetPagedAsync(filters);
+
+            return new PaginatedResult<EventInfoDto>
             {
-                var title = filters.Title.ToLower();
-                query = query.Where(e => e.Title.ToLower().Contains(title));
-            }
-
-            if (filters.From.HasValue)
-            {
-                query = query.Where(e => e.StartAt >= filters.From.Value);
-            }
-
-            if (filters.To.HasValue)
-            {
-                query = query.Where(e => e.EndAt <= filters.To.Value);
-            }
-
-            var totalCount = await query.CountAsync();
-
-            var items = await query
-                .Skip((filters.Page - 1) * filters.PageSize)
-                .Take(filters.PageSize)
-                .Select(eventItem => new EventInfoDto
+                Items = items.Select(eventItem => new EventInfoDto
                 {
                     Id = eventItem.Id,
                     Title = eventItem.Title,
@@ -50,12 +31,7 @@ namespace TicketFlow.Services
                     EndAt = eventItem.EndAt,
                     TotalSeats = eventItem.TotalSeats,
                     AvailableSeats = eventItem.AvailableSeats
-                })
-                .ToListAsync();
-
-            return new PaginatedResult<EventInfoDto>
-            {
-                Items = items,
+                }),
                 TotalCount = totalCount,
                 Page = filters.Page,
                 PageSize = items.Count
@@ -64,7 +40,7 @@ namespace TicketFlow.Services
 
         private async Task<Event> GetEventEntityAsync(Guid eventId)
         {
-            Event? eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == eventId);
+            Event? eventItem = await _eventRepo.GetByIdAsync(eventId);
 
             if (eventItem == null)
             {
@@ -100,8 +76,10 @@ namespace TicketFlow.Services
                 dto.EndAt,
                 dto.TotalSeats
             );
-            await _context.Events.AddAsync(newEvent);
-            await _context.SaveChangesAsync();
+
+            await _eventRepo.AddAsync(newEvent);
+            await _eventRepo.SaveChangesAsync();
+
             return newEvent.Id;
         }
 
@@ -117,7 +95,7 @@ namespace TicketFlow.Services
             existingEvent.EndAt = dto.EndAt;
             existingEvent.TotalSeats = dto.TotalSeats;
 
-            await _context.SaveChangesAsync();
+            await _eventRepo.SaveChangesAsync();
 
             return new EventInfoDto
             {
@@ -134,8 +112,8 @@ namespace TicketFlow.Services
         public async Task<bool> RemoveEventAsync(Guid eventId)
         {
             var eventItem = await GetEventEntityAsync(eventId);
-            _context.Events.Remove(eventItem);
-            await _context.SaveChangesAsync();
+            _eventRepo.Remove(eventItem);
+            await _eventRepo.SaveChangesAsync();
             return true;
         }
 
