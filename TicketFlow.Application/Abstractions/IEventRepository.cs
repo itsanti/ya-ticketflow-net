@@ -1,7 +1,7 @@
-﻿using TicketFlow.DTOs.Events;
+﻿using TicketFlow.Application.DTOs.Events;
 using TicketFlow.Domain.Entities;
 
-namespace TicketFlow.DataAccess.Repositories
+namespace TicketFlow.Application.Abstractions
 {
     public interface IEventRepository
     {

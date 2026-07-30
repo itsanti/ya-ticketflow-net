@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using TicketFlow.Application.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
 using TicketFlow.IntegrationTests.Infrastructure;
