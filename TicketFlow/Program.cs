@@ -1,11 +1,11 @@
-
+﻿
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
 using TicketFlow.Middlewares;
-using TicketFlow.Services;
-using TicketFlow.Services.Background;
+using TicketFlow.Application.Abstractions;
+using TicketFlow.Application.DependencyInjection;
 
 namespace TicketFlow
 {
@@ -23,11 +23,7 @@ namespace TicketFlow
             builder.Services.AddScoped<IEventRepository, EventRepository>();
             builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 
-            // Add services to the container.
-            builder.Services.AddScoped<IEventService, EventService>();
-            builder.Services.AddScoped<IBookingService, BookingService>();
-
-            builder.Services.AddHostedService<BookingProcessingBackgroundService>();
+            builder.Services.AddApplicationServices();
 
             builder.Services.AddControllers()
                 .ConfigureApiBehaviorOptions(options =>

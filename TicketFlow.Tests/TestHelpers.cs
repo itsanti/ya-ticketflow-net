@@ -1,9 +1,10 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using TicketFlow.Application.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
 using TicketFlow.Domain.Entities;
-using TicketFlow.Services;
+using TicketFlow.Application.DependencyInjection;
 
 namespace TicketFlow.Tests
 {
@@ -29,10 +30,10 @@ namespace TicketFlow.Tests
             services.AddDbContext<AppDbContext>(options =>
                 options.UseInMemoryDatabase(dbName));
 
-            services.AddScoped<IEventService, EventService>();
-            services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IEventRepository, EventRepository>();
             services.AddScoped<IBookingRepository, BookingRepository>();
+
+            services.AddApplicationServices();
 
             return services.BuildServiceProvider();
         }
