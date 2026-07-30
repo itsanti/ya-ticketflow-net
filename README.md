@@ -142,20 +142,20 @@
 ### Установка и запуск
  
 1. **Клонируйте репозиторий:**
-   ```bash
-   git clone https://github.com/itsanti/ticketflow.git
-   cd ticketflow
-   ```
+```bash
+git clone https://github.com/itsanti/ticketflow.git
+cd ticketflow
+```
 
 2. Запустите PostgreSQL:
-   ```bash
-   docker compose up -d
- ```
+```bash
+docker compose up -d
+```
  
 3. **Соберите проект:**
-   ```bash
-   dotnet build
-   ```
+```bash
+dotnet build
+```
 
 4. **Запустите приложение:**
 ```bash
