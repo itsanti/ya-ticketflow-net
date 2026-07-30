@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TicketFlow.Domain.Entities;
 
-namespace TicketFlow.DataAccess.Configurations
+namespace TicketFlow.Infrastructure.Persistence.Configurations
 {
     internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
     {

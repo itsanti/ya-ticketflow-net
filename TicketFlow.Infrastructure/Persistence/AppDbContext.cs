@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using TicketFlow.Domain.Entities;
 
-namespace TicketFlow.DataAccess
+namespace TicketFlow.Infrastructure.Persistence
 {
     public sealed class AppDbContext : DbContext
     {

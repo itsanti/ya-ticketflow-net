@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Testcontainers.PostgreSql;
-using TicketFlow.DataAccess;
+using TicketFlow.Infrastructure.Persistence;
 
 namespace TicketFlow.IntegrationTests.Infrastructure
 {

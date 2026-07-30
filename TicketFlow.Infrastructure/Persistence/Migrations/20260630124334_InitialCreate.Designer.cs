@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using TicketFlow.DataAccess;
+using TicketFlow.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace TicketFlow.DataAccess.Migrations
+namespace TicketFlow.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     [Migration("20260630124334_InitialCreate")]
