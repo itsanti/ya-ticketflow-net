@@ -1,4 +1,7 @@
 <Solution>
+  <Project Path="TicketFlow.Application/TicketFlow.Application.csproj" />
+  <Project Path="TicketFlow.Domain/TicketFlow.Domain.csproj" />
+  <Project Path="TicketFlow.Infrastructure/TicketFlow.Infrastructure.csproj" />
   <Project Path="TicketFlow.IntegrationTests/TicketFlow.IntegrationTests.csproj" />
   <Project Path="TicketFlow.Tests/TicketFlow.Tests.csproj" />
   <Project Path="TicketFlow/TicketFlow.csproj" />

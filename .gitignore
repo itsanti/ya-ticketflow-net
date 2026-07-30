@@ -56,4 +56,6 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-.vs
+# User-specific files
+*.user
+.vs/

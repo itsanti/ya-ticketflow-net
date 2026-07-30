@@ -18,4 +18,9 @@
     <PackageReference Include="Swashbuckle.AspNetCore" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\TicketFlow.Application\TicketFlow.Application.csproj" />
+    <ProjectReference Include="..\TicketFlow.Infrastructure\TicketFlow.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
