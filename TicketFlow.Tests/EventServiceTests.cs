@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using TicketFlow.DTOs.Events;
+using TicketFlow.Application.DTOs.Events;
 using TicketFlow.Domain.Exceptions;
-using TicketFlow.Services;
+using TicketFlow.Application.Services;
 
 namespace TicketFlow.Tests
 {

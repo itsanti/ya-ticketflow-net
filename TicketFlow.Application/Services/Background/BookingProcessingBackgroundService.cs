@@ -1,8 +1,11 @@
-﻿using TicketFlow.DataAccess.Repositories;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using TicketFlow.Application.Abstractions;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;
 
-namespace TicketFlow.Services.Background
+namespace TicketFlow.Application.Services.Background
 {
     public class BookingProcessingBackgroundService(
         IServiceScopeFactory scopeFactory,

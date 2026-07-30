@@ -5,7 +5,7 @@ using Moq;
 using TicketFlow.DataAccess;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;
-using TicketFlow.Services.Background;
+using TicketFlow.Application.Services.Background;
 
 namespace TicketFlow.Tests
 {

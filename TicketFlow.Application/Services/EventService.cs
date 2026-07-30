@@ -1,10 +1,10 @@
-﻿using TicketFlow.DataAccess.Repositories;
-using TicketFlow.DTOs.Events;
-using TicketFlow.DTOs.Pagination;
+﻿using TicketFlow.Application.Abstractions;
+using TicketFlow.Application.DTOs.Events;
+using TicketFlow.Application.DTOs.Pagination;
 using TicketFlow.Domain.Exceptions;
 using TicketFlow.Domain.Entities;
 
-namespace TicketFlow.Services
+namespace TicketFlow.Application.Services
 {
     public class EventService : IEventService
     {

@@ -1,7 +1,7 @@
-﻿using TicketFlow.DTOs.Events;
-using TicketFlow.DTOs.Pagination;
+﻿using TicketFlow.Application.DTOs.Events;
+using TicketFlow.Application.DTOs.Pagination;
 
-namespace TicketFlow.Services
+namespace TicketFlow.Application.Services
 {
     public interface IEventService
     {

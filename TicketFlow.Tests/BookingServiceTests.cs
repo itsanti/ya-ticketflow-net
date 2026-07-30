@@ -1,10 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.DataAccess;
+using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Domain.Exceptions;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;
-using TicketFlow.Services;
+using TicketFlow.Application.Services;
 
 namespace TicketFlow.Tests
 {
@@ -29,7 +30,7 @@ namespace TicketFlow.Tests
 
             Assert.NotEqual(Guid.Empty, booking.Id);
             Assert.Equal(eventId, booking.EventId);
-            Assert.Equal(BookingStatus.Pending, booking.Status);
+            Assert.Equal(nameof(BookingStatus.Pending), booking.Status);
             Assert.True(booking.CreatedAt <= DateTime.UtcNow);
         }
 
@@ -74,7 +75,7 @@ namespace TicketFlow.Tests
             Assert.NotNull(retrievedBooking);
             Assert.Equal(createdBooking.Id, retrievedBooking.Id);
             Assert.Equal(eventId, retrievedBooking.EventId);
-            Assert.Equal(BookingStatus.Pending, retrievedBooking.Status);
+            Assert.Equal(nameof(BookingStatus.Pending), retrievedBooking.Status);
         }
 
         [Fact]
@@ -104,7 +105,7 @@ namespace TicketFlow.Tests
                 await context.SaveChangesAsync();
             }
 
-            Booking booking;
+            BookingResponseDto booking;
 
             using (var createScope = serviceProvider.CreateScope())
             {
@@ -132,7 +133,7 @@ namespace TicketFlow.Tests
 
                 var updatedBooking = await bookingService.GetBookingByIdAsync(booking.Id);
 
-                Assert.Equal(BookingStatus.Confirmed, updatedBooking.Status);
+                Assert.Equal(nameof(BookingStatus.Confirmed), updatedBooking.Status);
                 Assert.NotNull(updatedBooking.ProcessedAt);
             }
         }
