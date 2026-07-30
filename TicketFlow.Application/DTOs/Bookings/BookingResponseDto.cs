@@ -1,4 +1,4 @@
-﻿namespace TicketFlow.DTOs.Bookings
+﻿namespace TicketFlow.Application.DTOs.Bookings
 {
     public class BookingResponseDto
     {

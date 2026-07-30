@@ -1,4 +1,4 @@
-﻿namespace TicketFlow.DTOs.Pagination
+﻿namespace TicketFlow.Application.DTOs.Pagination
 {
     public class PaginatedResult<T>
     {

@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace TicketFlow.DTOs.Events
+namespace TicketFlow.Application.DTOs.Events
 {
     public class CreateEventDto
     {
