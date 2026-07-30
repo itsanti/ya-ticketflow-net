@@ -3,7 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TicketFlow.DataAccess;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 using TicketFlow.Services.Background;
 
 namespace TicketFlow.Tests

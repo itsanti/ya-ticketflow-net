@@ -3,7 +3,7 @@ using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
 using TicketFlow.DTOs.Events;
 using TicketFlow.IntegrationTests.Infrastructure;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.IntegrationTests.Repositories
 {

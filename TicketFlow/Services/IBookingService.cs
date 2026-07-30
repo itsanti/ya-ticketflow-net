@@ -1,4 +1,4 @@
-﻿using TicketFlow.Models;
+﻿using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.Services
 {

@@ -2,7 +2,8 @@
 using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
 using TicketFlow.IntegrationTests.Infrastructure;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 
 namespace TicketFlow.IntegrationTests.Repositories
 {

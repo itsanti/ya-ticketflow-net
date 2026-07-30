@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using TicketFlow.DTOs.Events;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.DataAccess.Repositories
 {

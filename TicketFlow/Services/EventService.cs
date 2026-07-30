@@ -1,8 +1,8 @@
 ﻿using TicketFlow.DataAccess.Repositories;
 using TicketFlow.DTOs.Events;
 using TicketFlow.DTOs.Pagination;
-using TicketFlow.Exceptions;
-using TicketFlow.Models;
+using TicketFlow.Domain.Exceptions;
+using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.Services
 {

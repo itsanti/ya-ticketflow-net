@@ -1,8 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.DataAccess;
-using TicketFlow.Exceptions;
-using TicketFlow.Models;
+using TicketFlow.Domain.Exceptions;
+using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 using TicketFlow.Services;
 
 namespace TicketFlow.Tests

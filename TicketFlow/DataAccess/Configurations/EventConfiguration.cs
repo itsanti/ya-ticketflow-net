@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.DataAccess.Configurations
 {

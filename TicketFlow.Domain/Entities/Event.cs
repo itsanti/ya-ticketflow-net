@@ -1,6 +1,6 @@
-using TicketFlow.Exceptions;
+using TicketFlow.Domain.Exceptions;
 
-namespace TicketFlow.Models
+namespace TicketFlow.Domain.Entities
 {
     public class Event
     {

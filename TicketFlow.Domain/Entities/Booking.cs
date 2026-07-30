@@ -1,4 +1,6 @@
-﻿namespace TicketFlow.Models
+using TicketFlow.Domain.Enums;
+
+namespace TicketFlow.Domain.Entities
 {
     public class Booking
     {

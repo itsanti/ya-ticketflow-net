@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Net;
-using TicketFlow.Exceptions;
+using TicketFlow.Domain.Exceptions;
 
 namespace TicketFlow.Middlewares
 {

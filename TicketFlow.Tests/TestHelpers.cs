@@ -2,7 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.DataAccess;
 using TicketFlow.DataAccess.Repositories;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
 using TicketFlow.Services;
 
 namespace TicketFlow.Tests

@@ -1,5 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
 
 namespace TicketFlow.DataAccess
 {

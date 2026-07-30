@@ -25,7 +25,7 @@ namespace TicketFlow.DataAccess.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("TicketFlow.Models.Booking", b =>
+            modelBuilder.Entity("TicketFlow.Domain.Entities.Booking", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -56,7 +56,7 @@ namespace TicketFlow.DataAccess.Migrations
                     b.ToTable("bookings", (string)null);
                 });
 
-            modelBuilder.Entity("TicketFlow.Models.Event", b =>
+            modelBuilder.Entity("TicketFlow.Domain.Entities.Event", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -94,9 +94,9 @@ namespace TicketFlow.DataAccess.Migrations
                     b.ToTable("events", (string)null);
                 });
 
-            modelBuilder.Entity("TicketFlow.Models.Booking", b =>
+            modelBuilder.Entity("TicketFlow.Domain.Entities.Booking", b =>
                 {
-                    b.HasOne("TicketFlow.Models.Event", "Event")
+                    b.HasOne("TicketFlow.Domain.Entities.Event", "Event")
                         .WithMany("Bookings")
                         .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -105,7 +105,7 @@ namespace TicketFlow.DataAccess.Migrations
                     b.Navigation("Event");
                 });
 
-            modelBuilder.Entity("TicketFlow.Models.Event", b =>
+            modelBuilder.Entity("TicketFlow.Domain.Entities.Event", b =>
                 {
                     b.Navigation("Bookings");
                 });

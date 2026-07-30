@@ -1,4 +1,4 @@
-﻿namespace TicketFlow.Models
+﻿namespace TicketFlow.Domain.Enums
 {
     public enum BookingStatus
     {

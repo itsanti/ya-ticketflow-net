@@ -1,4 +1,5 @@
-﻿using TicketFlow.Models;
+﻿using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 
 namespace TicketFlow.Tests.Models
 {

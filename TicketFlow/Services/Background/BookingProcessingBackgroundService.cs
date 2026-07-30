@@ -1,5 +1,6 @@
 ﻿using TicketFlow.DataAccess.Repositories;
-using TicketFlow.Models;
+using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 
 namespace TicketFlow.Services.Background
 {
