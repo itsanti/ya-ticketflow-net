@@ -71,6 +71,7 @@ namespace TicketFlow.Middlewares
                 ValidationException => StatusCodes.Status400BadRequest,
                 NotFoundException => StatusCodes.Status404NotFound,
                 NoAvailableSeatsException => StatusCodes.Status409Conflict,
+                DomainException => StatusCodes.Status400BadRequest,
                 _ => StatusCodes.Status500InternalServerError
             };
     }
