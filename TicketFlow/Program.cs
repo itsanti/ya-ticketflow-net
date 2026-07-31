@@ -1,6 +1,6 @@
 ﻿
-using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Application.DependencyInjection;
+using TicketFlow.DependencyInjection;
 using TicketFlow.Infrastructure.DependencyInjection;
 using TicketFlow.Middlewares;
 
@@ -18,32 +18,7 @@ namespace TicketFlow
 
             builder.Services.AddApplicationServices();
 
-            builder.Services.AddControllers()
-                .ConfigureApiBehaviorOptions(options =>
-                {
-                    options.InvalidModelStateResponseFactory = context =>
-                    {
-                        var errors = context.ModelState.Values
-                            .SelectMany(v => v.Errors)
-                            .Select(e => e.ErrorMessage);
-                        var detailMessage = string.Join(" ", errors);
-                        var problemDetails = new ProblemDetails
-                        {
-                            Status = StatusCodes.Status400BadRequest,
-                            Title = "Validation error",
-                            Detail = detailMessage
-                        };
-
-                        return new BadRequestObjectResult(problemDetails);
-                    };
-                });
-
-            builder.Services.AddProblemDetails();
-
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.AddOpenApi();
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddPresentationServices();
 
             var app = builder.Build();
 
