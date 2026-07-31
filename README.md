@@ -49,7 +49,7 @@
 │   ├── DependencyInjection/            # AddPresentationServices
 │   ├── Program.cs                      # Composition root приложения
 │   └── appsettings.json                # Настройки приложения
-├── TicketFlow.Tests/                   # Юнит-тесты (ссылаются на Domain, Application, Infrastructure)
+├── TicketFlow.Tests/                   # Юнит-тесты (ссылаются на Domain и Application, порты — моки)
 │   ├── Models/                         # Изолированные тесты доменных моделей (EventTests, BookingTests)
 │   └── *ServiceTests.cs                # Тесты бизнес-логики и конкурентного доступа
 └── TicketFlow.IntegrationTests/        # Интеграционные тесты на PostgreSQL через Testcontainers
@@ -127,7 +127,7 @@ builder.Services.AddPresentationServices();
 - [x] `AppDbContext` с `DbSet<Event>` и `DbSet<Booking>`
 - [x] Fluent API-маппинг сущностей через `IEntityTypeConfiguration<T>`
 - [x] Адаптация фонового сервиса для работы со scoped-зависимостями через `IServiceScopeFactory`
-- [x] Тесты сервисов на EF Core InMemory provider
+- [x] Юнит-тесты сервисов изолированы от инфраструктуры: порты подменяются моками (Moq)
 - [x] Управление схемой базы данных через EF Core Migrations
 - [x] Автоматическое применение миграций при запуске приложения
 - [x] Начальная миграция `InitialCreate` для таблиц `events` и `bookings`
@@ -145,6 +145,7 @@ builder.Services.AddPresentationServices();
 - [x] Контроллеры не содержат бизнес-логики и не работают с доменными сущностями напрямую
 - [x] Применение миграций инкапсулировано в Infrastructure (`ApplyMigrations`)
 - [x] Тестовые проекты ссылаются на конкретные слои, а не на монолитный веб-проект
+- [x] Интеграционные тесты сквозного сценария бронирования и фоновой обработки на реальной PostgreSQL
 ---
 
 ## 🛠 Технологический стек
@@ -155,7 +156,7 @@ builder.Services.AddPresentationServices();
 - **Database**: PostgreSQL
 - **ORM**: Entity Framework Core
 - **EF Provider**: Npgsql.EntityFrameworkCore.PostgreSQL
-- **Unit Tests Database Provider**: Microsoft.EntityFrameworkCore.InMemory
+- **Mocking**: Moq (подмена портов в юнит-тестах)
 - **Integration Tests Database**: PostgreSQL через Testcontainers
 - **Containers**: Testcontainers.PostgreSql
 
@@ -202,15 +203,26 @@ builder.Services.AddPresentationServices();
 
 `Microsoft.EntityFrameworkCore.Design` остаётся в Presentation-проекте, потому что инструменты `dotnet ef` требуют его в startup-проекте.
 
-Тестовые проекты:
+`TicketFlow.Tests` (юнит-тесты, ссылается на Domain и Application):
 
 ```bash
-- Microsoft.EntityFrameworkCore.InMemory
+- Microsoft.Extensions.DependencyInjection
+- Microsoft.NET.Test.Sdk
+- Moq
+- xunit
+- xunit.runner.visualstudio
+```
+
+`TicketFlow.IntegrationTests` (ссылается на Domain, Application и Infrastructure):
+
+```bash
+- Microsoft.EntityFrameworkCore
+- Microsoft.EntityFrameworkCore.Relational
+- Npgsql.EntityFrameworkCore.PostgreSQL
 - Testcontainers.PostgreSql
 - Microsoft.NET.Test.Sdk
 - xunit
 - xunit.runner.visualstudio
-- Moq
 ```
 
 ### Настройка подключения к PostgreSQL
@@ -387,7 +399,7 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 
 ## 🧪 Тестирование
 
-В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. Оба тестовых проекта ссылаются напрямую на слои `Domain`, `Application` и `Infrastructure`, а не на веб-проект.
+В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. Тестовые проекты ссылаются напрямую на слои, а не на веб-проект: `TicketFlow.Tests` — на `Domain` и `Application`, `TicketFlow.IntegrationTests` — дополнительно на `Infrastructure`.
 
 Для запуска всех тестов:
 ```bash
@@ -405,13 +417,17 @@ dotnet test ./TicketFlow.IntegrationTests/TicketFlow.IntegrationTests.csproj
 
 Проект `TicketFlow.Tests` проверяет бизнес-логику доменных моделей, сервисов и фоновой обработки.
 
-В unit-тестах используется `Microsoft.EntityFrameworkCore.InMemory`. Для каждого набора тестов создаётся отдельная InMemory-база:
+Юнит-тесты не зависят от инфраструктуры: проект ссылается только на `Domain` и `Application`, а порты `IEventRepository` и `IBookingRepository` подменяются моками через Moq. Состояние хранится в памяти теста, база данных не используется вообще.
+
+Общее окружение собирается в `TestEnvironment`: он настраивает моки портов, регистрирует их синглтонами и вызывает `AddApplicationServices()`, поэтому тесты работают с теми же сервисами, что и приложение:
 
 ```csharp
-var dbName = Guid.NewGuid().ToString();
+using var env = TestHelpers.Create();
+using var scope = env.CreateScope();
 
-services.AddDbContext<AppDbContext>(options =>
-    options.UseInMemoryDatabase(dbName));
+env.SeedEvent(TestHelpers.CreateTestEvent(totalSeats: 5));
+
+var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 ```
 
 Основные наборы unit-тестов:
@@ -433,6 +449,41 @@ services.AddDbContext<AppDbContext>(options =>
 6. Покрывают методы `EventRepository`.
 7. Покрывают методы `BookingRepository`.
 8. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
+9. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
+10. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+
+Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString)` и `AddApplicationServices()`, то есть повторяет composition root приложения.
+
+### Как писать новые тесты
+
+**Выбор уровня.** Правило простое: если проверяется решение, принимаемое кодом, — это unit-тест; если проверяется, что решение доехало до базы, — интеграционный.
+
+| Что проверяем | Куда писать |
+|---|---|
+| Бизнес-правило сущности (`TryReserveSeats`, `Confirm`) | `TicketFlow.Tests/Models/` |
+| Логика use case: валидация, выброс доменных исключений, маппинг в DTO | `TicketFlow.Tests` |
+| Взаимодействие с портом (сколько раз вызван `SaveChangesAsync`) | `TicketFlow.Tests`, через `Verify` |
+| Трансляция LINQ в SQL: фильтры, сортировка, пагинация | `TicketFlow.IntegrationTests` |
+| Сохранение изменений, миграции, внешние ключи, каскады | `TicketFlow.IntegrationTests` |
+| Сценарий, затрагивающий несколько сущностей за одно сохранение | `TicketFlow.IntegrationTests` |
+
+**Именование.** `Method_ShouldExpectedResult_WhenCondition`, например `CreateBookingAsync_ShouldThrowNoAvailableSeatsException_WhenEventIsSoldOut`. Часть `_When...` опускается, если условие очевидно из названия теста.
+
+**Unit-тест.** Всё окружение даёт `TestEnvironment`: `SeedEvent` / `SeedBooking` для arrange, `FindEvent` / `FindBooking` / `AllBookings` для assert, `CreateScope()` — когда важно, что сервис scoped. Обращаться к `EventRepository` / `BookingRepository` напрямую нужно только для `Verify`, то есть когда проверяется факт вызова, а не результат.
+
+Чего в юнит-тестах делать не стоит:
+
+- добавлять в `TicketFlow.Tests` ссылку на `Infrastructure` — тогда тест перестанет быть юнит-тестом, а моки портов потеряют смысл;
+- проверять поведение хранилища. Логика фильтрации в моке `GetPagedAsync` повторяет `EventRepository` лишь приблизительно и не заменяет SQL — новые правила выборки проверяются интеграционным тестом;
+- полагаться на то, что `SaveChangesAsync` что-то меняет: в моках это пустышка, объекты в списках и так изменяются по ссылке.
+
+**Интеграционный тест.** Класс помечается `[Collection("PostgreSql collection")]` — коллекция отключает параллельный запуск, потому что база одна на всех. Каждый тест начинается с `await _fixture.ResetDatabaseAsync()`: база пересоздаётся и миграции применяются заново, поэтому тесты не зависят от порядка запуска.
+
+Дальше два варианта. Для проверки репозитория или схемы — `_fixture.CreateContext()` и работа напрямую с `AppDbContext`. Для сценария уровня Application — `_fixture.CreateServiceProvider()`, scope и получение сервиса через DI. Результат всегда проверяется из **нового** контекста с `AsNoTracking()`, иначе можно прочитать объект из кэша change tracker'а и не заметить, что запись в базу не дошла.
+
+Даты в тестах — только UTC (`DateTime.UtcNow`): колонки имеют тип `timestamp with time zone`, и Npgsql отвергнет значение с `Kind = Unspecified`.
+
+**Про время выполнения.** Юнит-тесты не обращаются ни к базе, ни к диску. Интеграционные поднимают Docker-контейнер и пересоздают схему на каждый тест, а тест фоновой обработки дополнительно ждёт цикл воркера — это самая медленная часть набора. Поэтому в интеграционный проект стоит выносить только то, что действительно требует настоящей базы.
 
 ---
 
