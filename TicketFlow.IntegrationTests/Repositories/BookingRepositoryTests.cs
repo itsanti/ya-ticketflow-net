@@ -1,7 +1,7 @@
 ﻿using TicketFlow.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using TicketFlow.DataAccess;
-using TicketFlow.DataAccess.Repositories;
+using TicketFlow.Infrastructure.Persistence;
+using TicketFlow.Infrastructure.Repositories;
 using TicketFlow.IntegrationTests.Infrastructure;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;

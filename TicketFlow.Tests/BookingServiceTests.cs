@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using TicketFlow.DataAccess;
+using TicketFlow.Infrastructure.Persistence;
 using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Domain.Exceptions;
 using TicketFlow.Domain.Entities;
