@@ -1,11 +1,8 @@
 ﻿
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using TicketFlow.DataAccess;
-using TicketFlow.DataAccess.Repositories;
-using TicketFlow.Middlewares;
-using TicketFlow.Application.Abstractions;
 using TicketFlow.Application.DependencyInjection;
+using TicketFlow.Infrastructure.DependencyInjection;
+using TicketFlow.Middlewares;
 
 namespace TicketFlow
 {
@@ -17,11 +14,7 @@ namespace TicketFlow
 
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-            builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(connectionString));
-
-            builder.Services.AddScoped<IEventRepository, EventRepository>();
-            builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+            builder.Services.AddInfrastructureServices(connectionString);
 
             builder.Services.AddApplicationServices();
 
@@ -54,11 +47,7 @@ namespace TicketFlow
 
             var app = builder.Build();
 
-            using (var scope = app.Services.CreateScope())
-            {
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                db.Database.Migrate();
-            }
+            app.Services.ApplyMigrations();
 
             app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 

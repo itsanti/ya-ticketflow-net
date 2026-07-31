@@ -1,8 +1,8 @@
 ﻿using TicketFlow.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using TicketFlow.DataAccess;
-using TicketFlow.DataAccess.Repositories;
+using TicketFlow.Infrastructure.Persistence;
+using TicketFlow.Infrastructure.Repositories;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Application.DependencyInjection;
 
