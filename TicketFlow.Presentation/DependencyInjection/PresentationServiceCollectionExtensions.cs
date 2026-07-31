@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 
-namespace TicketFlow.DependencyInjection
+namespace TicketFlow.Presentation.DependencyInjection
 {
     public static class PresentationServiceCollectionExtensions
     {

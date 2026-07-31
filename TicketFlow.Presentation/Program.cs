@@ -1,10 +1,10 @@
 ﻿
 using TicketFlow.Application.DependencyInjection;
-using TicketFlow.DependencyInjection;
+using TicketFlow.Presentation.DependencyInjection;
 using TicketFlow.Infrastructure.DependencyInjection;
-using TicketFlow.Middlewares;
+using TicketFlow.Presentation.Middlewares;
 
-namespace TicketFlow
+namespace TicketFlow.Presentation
 {
     public class Program
     {

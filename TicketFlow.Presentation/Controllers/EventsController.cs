@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Application.DTOs.Events;
 using TicketFlow.Application.DTOs.Pagination;
 using TicketFlow.Application.Services;
 
-namespace TicketFlow.Controllers
+namespace TicketFlow.Presentation.Controllers
 {
     [ApiController]
     [Route("events")]

@@ -2,7 +2,7 @@
 using System.Net;
 using TicketFlow.Domain.Exceptions;
 
-namespace TicketFlow.Middlewares
+namespace TicketFlow.Presentation.Middlewares
 {
     public class GlobalExceptionHandlingMiddleware
     {

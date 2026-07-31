@@ -1,4 +1,4 @@
-﻿namespace TicketFlow.Middlewares
+﻿namespace TicketFlow.Presentation.Middlewares
 {
     public class RequestLoggingMiddleware
     {

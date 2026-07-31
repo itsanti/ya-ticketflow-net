@@ -2,7 +2,7 @@
 using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Application.Services;
 
-namespace TicketFlow.Controllers
+namespace TicketFlow.Presentation.Controllers
 {
     [ApiController]
     [Route("bookings")]

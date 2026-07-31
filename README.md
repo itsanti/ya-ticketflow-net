@@ -43,7 +43,7 @@
 │   │   └── Migrations/                 # EF Core-миграции схемы БД
 │   ├── Repositories/                   # Реализации портов (EventRepository, BookingRepository)
 │   └── DependencyInjection/            # AddInfrastructureServices, ApplyMigrations
-├── TicketFlow/                         # Presentation — точка входа (зависит от Application и Infrastructure)
+├── TicketFlow.Presentation/            # Presentation — точка входа (зависит от Application и Infrastructure)
 │   ├── Controllers/                    # Эндпоинты REST API (EventsController, BookingsController)
 │   ├── Middlewares/                    # Логирование запросов, глобальный перехват ошибок
 │   ├── DependencyInjection/            # AddPresentationServices
@@ -192,7 +192,7 @@ builder.Services.AddPresentationServices();
 - Npgsql.EntityFrameworkCore.PostgreSQL
 ```
 
-`TicketFlow` (Presentation):
+`TicketFlow.Presentation`:
 
 ```bash
 - Swashbuckle.AspNetCore
@@ -200,7 +200,7 @@ builder.Services.AddPresentationServices();
 - Microsoft.EntityFrameworkCore.Design
 ```
 
-`Microsoft.EntityFrameworkCore.Design` остаётся в веб-проекте, потому что инструменты `dotnet ef` требуют его в startup-проекте.
+`Microsoft.EntityFrameworkCore.Design` остаётся в Presentation-проекте, потому что инструменты `dotnet ef` требуют его в startup-проекте.
 
 Тестовые проекты:
 
@@ -216,7 +216,7 @@ builder.Services.AddPresentationServices();
 ### Настройка подключения к PostgreSQL
 
 Приложение читает строку подключения по ключу DefaultConnection и регистрирует AppDbContext через PostgreSQL-провайдер.
-Строка подключения задаётся в `TicketFlow/appsettings.json`:
+Строка подключения задаётся в `TicketFlow.Presentation/appsettings.json`:
 
 ```json
 {
@@ -246,7 +246,7 @@ dotnet build
 
 4. **Запустите приложение:**
 ```bash
-dotnet run --project ./TicketFlow/TicketFlow.csproj
+dotnet run --project ./TicketFlow.Presentation/TicketFlow.Presentation.csproj
 ```
 При запуске приложение автоматически применит доступные EF Core-миграции через `app.Services.ApplyMigrations()`.
  
@@ -275,13 +275,13 @@ app.Services.ApplyMigrations();
 
 Таблица `__EFMigrationsHistory` используется EF Core для хранения истории применённых миграций.
 
-Миграции и `AppDbContext` живут в `TicketFlow.Infrastructure`, а точка входа приложения — в `TicketFlow`. Поэтому команды `dotnet ef` требуют двух параметров: `--project` указывает сборку с контекстом и миграциями, `--startup-project` — проект, из которого читается конфигурация и строка подключения.
+Миграции и `AppDbContext` живут в `TicketFlow.Infrastructure`, а точка входа приложения — в `TicketFlow.Presentation`. Поэтому команды `dotnet ef` требуют двух параметров: `--project` указывает сборку с контекстом и миграциями, `--startup-project` — проект, из которого читается конфигурация и строка подключения.
 
 Для создания новой миграции из корня решения:
 ```bash
 dotnet ef migrations add MigrationName \
   --project ./TicketFlow.Infrastructure/TicketFlow.Infrastructure.csproj \
-  --startup-project ./TicketFlow/TicketFlow.csproj \
+  --startup-project ./TicketFlow.Presentation/TicketFlow.Presentation.csproj \
   --output-dir Persistence/Migrations
 ```
 
@@ -289,7 +289,7 @@ dotnet ef migrations add MigrationName \
 ```bash
 dotnet ef database update \
   --project ./TicketFlow.Infrastructure/TicketFlow.Infrastructure.csproj \
-  --startup-project ./TicketFlow/TicketFlow.csproj
+  --startup-project ./TicketFlow.Presentation/TicketFlow.Presentation.csproj
 ```
 
 В обычном сценарии ручной вызов `database update` не требуется, потому что приложение применяет миграции при запуске.
