@@ -15,33 +15,93 @@
 - **Спринт 4**: Потокобезопасность, параллельная обработка заявок и защита от овербукинга (Rich Domain Model, Lock, SemaphoreSlim) ✅
 - **Спринт 5**: Переход на PostgreSQL и Entity Framework Core, настройка `AppDbContext`, Fluent API-маппинг, обновление сервисов и тестов ✅
 - **Спринт 6**: Миграции EF Core, репозиторный слой, интеграционные тесты с PostgreSQL через Testcontainers ✅
+- **Спринт 7**: Переход на чистую архитектуру — разделение проекта на четыре сборки (Domain, Application, Infrastructure, Presentation), интерфейсы портов и composition root ✅
 ---
 
 ## 🏗 Структура проекта
+
+Солюшен разделён на четыре отдельные сборки. Зависимости направлены строго внутрь и проверяются компилятором через `<ProjectReference>`.
+
 ```text
-├── TicketFlow/
-│   ├── DataAccess/              # EF-инфраструктура и слой доступа к данным
-│   │   ├── AppDbContext.cs      # DbContext приложения
-│   │   ├── Configurations/      # Fluent API-конфигурации сущностей
-│   │   ├── Migrations/          # EF Core-миграции схемы БД
-│   │   └── Repositories/        # Репозитории Event и Booking
-│   ├── Controllers/        # Эндпоинты REST API (EventsController, BookingsController)
-│   ├── DTOs
-│   │   ├── Bookings/       # Объекты ответа для бронирований (BookingResponseDto)
-│   │   ├── Events/         # Объекты передачи данных (CreateEventDto, UpdateEventDto, EventInfoDto)
-│   │   └── Pagination/
-│   ├── Exceptions/         # Пользовательские исключения (вкл. NoAvailableSeatsException)
-│   ├── Middlewares/        # Кастомные middleware (логирование запросов, глобальный перехват ошибок)
-│   ├── Models/             # Доменные сущности с богатой бизнес-логикой (Event, Booking)
-│   ├── Services/           # Прикладной уровень (IEventService, EventService, BookingService)
-│   │   └── Background/     # Фоновые службы с параллельной обработкой (BookingProcessingBackgroundService)
-│   ├── Program.cs          # Точка входа и конфигурация приложения
-│   └── appsettings.json    # Настройки приложения
-├─ TicketFlow.Tests/       # Юнит-тесты
-│   ├── Models/             # Изолированные тесты доменных моделей (EventTests, BookingTests)
-│   └── ServiceTests.cs    # Тесты бизнес-логики и конкурентного доступа
-└── TicketFlow.IntegrationTests/ # Интеграционные тесты на PostgreSQL через Testcontainers
+├── TicketFlow.Domain/                  # Доменный слой (без внешних зависимостей)
+│   ├── Entities/                       # Доменные сущности с бизнес-логикой (Event, Booking)
+│   ├── Enums/                          # Доменные перечисления (BookingStatus)
+│   └── Exceptions/                     # Доменные исключения (DomainException и наследники)
+├── TicketFlow.Application/             # Прикладной слой (зависит только от Domain)
+│   ├── Abstractions/                   # Интерфейсы портов (IEventRepository, IBookingRepository)
+│   ├── DTOs/
+│   │   ├── Bookings/                   # BookingResponseDto
+│   │   ├── Events/                     # CreateEventDto, UpdateEventDto, EventInfoDto, EventFiltersDto
+│   │   └── Pagination/                 # PaginationParams, PaginatedResult
+│   ├── Services/                       # Use cases (IEventService/EventService, IBookingService/BookingService)
+│   │   └── Background/                 # Фоновая обработка заявок (BookingProcessingBackgroundService)
+│   └── DependencyInjection/            # AddApplicationServices
+├── TicketFlow.Infrastructure/          # Инфраструктурный слой (зависит от Application и Domain)
+│   ├── Persistence/
+│   │   ├── AppDbContext.cs             # DbContext приложения
+│   │   ├── Configurations/             # Fluent API-конфигурации сущностей
+│   │   └── Migrations/                 # EF Core-миграции схемы БД
+│   ├── Repositories/                   # Реализации портов (EventRepository, BookingRepository)
+│   └── DependencyInjection/            # AddInfrastructureServices, ApplyMigrations
+├── TicketFlow/                         # Presentation — точка входа (зависит от Application и Infrastructure)
+│   ├── Controllers/                    # Эндпоинты REST API (EventsController, BookingsController)
+│   ├── Middlewares/                    # Логирование запросов, глобальный перехват ошибок
+│   ├── DependencyInjection/            # AddPresentationServices
+│   ├── Program.cs                      # Composition root приложения
+│   └── appsettings.json                # Настройки приложения
+├── TicketFlow.Tests/                   # Юнит-тесты (ссылаются на Domain, Application, Infrastructure)
+│   ├── Models/                         # Изолированные тесты доменных моделей (EventTests, BookingTests)
+│   └── *ServiceTests.cs                # Тесты бизнес-логики и конкурентного доступа
+└── TicketFlow.IntegrationTests/        # Интеграционные тесты на PostgreSQL через Testcontainers
 ```
+
+Направление зависимостей:
+
+```text
+Presentation ──> Application <── Infrastructure
+      │               │               │
+      └──────────> Domain <───────────┘
+```
+
+## 🧱 Слои приложения
+
+### Domain — что такое предметная область
+
+Доменные сущности, перечисления и исключения. Слой описывает бизнес-правила в отрыве от способа их применения: `Event` сам следит за количеством мест (`TryReserveSeats`, `ReleaseSeats`), `Booking` сам управляет своим статусом (`Confirm`, `Reject`).
+
+Domain не ссылается ни на один проект и не содержит ни одного NuGet-пакета — ни ASP.NET Core, ни EF Core. Благодаря этому доменные правила тестируются без базы данных и веб-хоста, а смена фреймворка или СУБД слоя не касается.
+
+Нарушение бизнес-правила выражается доменным исключением: `ValidationException`, `NotFoundException`, `NoAvailableSeatsException` наследуются от общего `DomainException`. Domain при этом не знает, что где-то они превратятся в HTTP-коды.
+
+### Application — что приложение умеет делать
+
+Сценарии использования: создать событие, забронировать место, получить статус брони. Здесь же живут DTO — контракты входа и выхода use cases — и фоновая обработка заявок.
+
+Ключевой элемент слоя — **интерфейсы портов** в `Abstractions/`. Application объявляет, что ему нужно от внешнего мира (`IEventRepository`, `IBookingRepository`), но не знает, кто и как это реализует. В этом суть инверсии зависимостей: интерфейс принадлежит тому, кто им пользуется, а не тому, кто его реализует.
+
+Application ссылается только на Domain. Ссылки на Infrastructure нет — это ключевое правило, и его соблюдение проверяет компилятор, а не договорённость в команде.
+
+### Infrastructure — как это технически реализовано
+
+Адаптеры к внешним технологиям: `AppDbContext`, Fluent API-конфигурации, миграции и реализации репозиториев поверх EF Core и PostgreSQL. Слой реализует порты, объявленные в Application.
+
+Здесь сосредоточены все технологические решения. Замена PostgreSQL на другую СУБД или EF Core на Dapper затрагивает только эту сборку: Application и Domain остаются нетронутыми, потому что работают с интерфейсами.
+
+### Presentation — как этим пользоваться снаружи
+
+HTTP-обвязка: контроллеры, middleware и composition root. Контроллеры тонкие — принять запрос, вызвать сервис Application, вернуть результат с нужным кодом ответа. Ни бизнес-логики, ни маппинга доменных сущностей в них нет.
+
+Глобальный обработчик исключений транслирует доменные исключения в HTTP-статусы (`ValidationException` → 400, `NotFoundException` → 404, `NoAvailableSeatsException` → 409) в формате Problem Details. Это единственное место, где домен встречается с протоколом.
+
+Composition root находится в `Program.cs` — он читает конфигурацию и собирает граф зависимостей через extension-методы слоёв:
+
+```csharp
+builder.Services.AddInfrastructureServices(connectionString);
+builder.Services.AddApplicationServices();
+builder.Services.AddPresentationServices();
+```
+
+Каждый слой сам знает, что регистрировать, поэтому `Program.cs` остаётся компактным и читается как оглавление приложения.
 
 ## ✨ Реализованный функционал
 
@@ -69,13 +129,22 @@
 - [x] Адаптация фонового сервиса для работы со scoped-зависимостями через `IServiceScopeFactory`
 - [x] Тесты сервисов на EF Core InMemory provider
 - [x] Управление схемой базы данных через EF Core Migrations
-- [x] Автоматическое применение миграций при запуске приложения через `Database.Migrate()`
+- [x] Автоматическое применение миграций при запуске приложения
 - [x] Начальная миграция `InitialCreate` для таблиц `events` и `bookings`
 - [x] Настроена связь `bookings.event_id → events.id` через внешний ключ
 - [x] Реализован репозиторный слой для `Event` и `Booking`
 - [x] Сервисы используют репозитории через DI и не обращаются к `AppDbContext` напрямую
 - [x] Интеграционные тесты репозиториев на реальной PostgreSQL через Testcontainers
 - [x] Интеграционные тесты применения миграций и проверки структуры БД
+- [x] Солюшен разделён на четыре сборки: Domain, Application, Infrastructure, Presentation
+- [x] Направление зависимостей контролируется компилятором через `<ProjectReference>`
+- [x] Domain не содержит ни одной ссылки на сторонние фреймворки
+- [x] Интерфейсы портов объявлены в Application, реализации — в Infrastructure
+- [x] Регистрация зависимостей каждого слоя вынесена в extension-методы (`AddApplicationServices`, `AddInfrastructureServices`, `AddPresentationServices`)
+- [x] Composition root находится в `Program.cs` веб-проекта
+- [x] Контроллеры не содержат бизнес-логики и не работают с доменными сущностями напрямую
+- [x] Применение миграций инкапсулировано в Infrastructure (`ApplyMigrations`)
+- [x] Тестовые проекты ссылаются на конкретные слои, а не на монолитный веб-проект
 ---
 
 ## 🛠 Технологический стек
@@ -104,16 +173,34 @@
 ### Используемые NuGet-пакеты
 Версии NuGet-пакетов управляются централизованно через `Directory.Packages.props`.
 
-Основной проект:
+Пакеты распределены по слоям — каждый проект объявляет только то, что использует.
+
+`TicketFlow.Domain` — ни одного пакета.
+
+`TicketFlow.Application`:
+
+```bash
+- Microsoft.Extensions.DependencyInjection.Abstractions
+- Microsoft.Extensions.Hosting.Abstractions
+```
+
+`TicketFlow.Infrastructure`:
+
+```bash
+- Microsoft.EntityFrameworkCore
+- Microsoft.EntityFrameworkCore.Relational
+- Npgsql.EntityFrameworkCore.PostgreSQL
+```
+
+`TicketFlow` (Presentation):
 
 ```bash
 - Swashbuckle.AspNetCore
 - Microsoft.AspNetCore.OpenApi
-- Microsoft.EntityFrameworkCore
-- Microsoft.EntityFrameworkCore.Relational
 - Microsoft.EntityFrameworkCore.Design
-- Npgsql.EntityFrameworkCore.PostgreSQL
 ```
+
+`Microsoft.EntityFrameworkCore.Design` остаётся в веб-проекте, потому что инструменты `dotnet ef` требуют его в startup-проекте.
 
 Тестовые проекты:
 
@@ -161,7 +248,7 @@ dotnet build
 ```bash
 dotnet run --project ./TicketFlow/TicketFlow.csproj
 ```
-При запуске приложение автоматически применит доступные EF Core-миграции через `Database.Migrate()`.
+При запуске приложение автоматически применит доступные EF Core-миграции через `app.Services.ApplyMigrations()`.
  
 5. **Откройте Swagger UI:**
 ```
@@ -172,15 +259,13 @@ https://localhost:7241/swagger
 
 Схема базы данных управляется через **EF Core Migrations**.
 
-При запуске приложения выполняется:
+Применение миграций инкапсулировано в Infrastructure — в `Program.cs` остаётся один вызов:
 
 ```csharp
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
+app.Services.ApplyMigrations();
 ```
+
+Внутри extension-метод создаёт scope, получает `AppDbContext` и вызывает `Database.Migrate()`. Благодаря этому веб-проект не ссылается на EF Core напрямую.
 
 Это применяет все ожидающие миграции и создаёт таблицы:
 
@@ -190,18 +275,20 @@ using (var scope = app.Services.CreateScope())
 
 Таблица `__EFMigrationsHistory` используется EF Core для хранения истории применённых миграций.
 
+Миграции и `AppDbContext` живут в `TicketFlow.Infrastructure`, а точка входа приложения — в `TicketFlow`. Поэтому команды `dotnet ef` требуют двух параметров: `--project` указывает сборку с контекстом и миграциями, `--startup-project` — проект, из которого читается конфигурация и строка подключения.
+
 Для создания новой миграции из корня решения:
 ```bash
 dotnet ef migrations add MigrationName \
-  --project ./TicketFlow/TicketFlow.csproj \
+  --project ./TicketFlow.Infrastructure/TicketFlow.Infrastructure.csproj \
   --startup-project ./TicketFlow/TicketFlow.csproj \
-  --output-dir DataAccess/Migrations
+  --output-dir Persistence/Migrations
 ```
 
 Для применения миграций вручную:
 ```bash
 dotnet ef database update \
-  --project ./TicketFlow/TicketFlow.csproj \
+  --project ./TicketFlow.Infrastructure/TicketFlow.Infrastructure.csproj \
   --startup-project ./TicketFlow/TicketFlow.csproj
 ```
 
@@ -300,7 +387,7 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 
 ## 🧪 Тестирование
 
-В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты.
+В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. Оба тестовых проекта ссылаются напрямую на слои `Domain`, `Application` и `Infrastructure`, а не на веб-проект.
 
 Для запуска всех тестов:
 ```bash
@@ -351,12 +438,12 @@ services.AddDbContext<AppDbContext>(options =>
 
 ## 🗃️ Репозиторный слой
 
-Доступ к базе данных инкапсулирован в репозиториях:
+Доступ к базе данных инкапсулирован в репозиториях, разнесённых по двум слоям:
 
-- `IEventRepository` / `EventRepository`
-- `IBookingRepository` / `BookingRepository`
+- интерфейсы портов — `IEventRepository`, `IBookingRepository` — объявлены в `TicketFlow.Application/Abstractions/`;
+- реализации-адаптеры — `EventRepository`, `BookingRepository` — находятся в `TicketFlow.Infrastructure/Repositories/` и работают через `AppDbContext`.
 
-Сервисы не обращаются к `AppDbContext` напрямую. Они используют репозитории через DI.
+Сервисы не обращаются к `AppDbContext` напрямую и не знают о конкретных реализациях — они получают интерфейсы через DI, а связывание происходит в composition root.
 
 Репозитории отвечают только за доступ к данным:
 
