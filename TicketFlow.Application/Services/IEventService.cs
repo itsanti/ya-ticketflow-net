@@ -9,6 +9,6 @@ namespace TicketFlow.Application.Services
         Task<EventInfoDto> GetEventAsync(Guid eventId);
         Task<Guid> AddEventAsync(CreateEventDto dto);
         Task<EventInfoDto> UpdateEventAsync(Guid eventId, UpdateEventDto dto);
-        Task<bool> RemoveEventAsync(Guid eventId);
+        Task RemoveEventAsync(Guid eventId);
     }
 }

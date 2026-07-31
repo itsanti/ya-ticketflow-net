@@ -109,12 +109,11 @@ namespace TicketFlow.Application.Services
             };
         }
 
-        public async Task<bool> RemoveEventAsync(Guid eventId)
+        public async Task RemoveEventAsync(Guid eventId)
         {
             var eventItem = await GetEventEntityAsync(eventId);
             _eventRepo.Remove(eventItem);
             await _eventRepo.SaveChangesAsync();
-            return true;
         }
 
         private static void ValidateDates(DateTime startAt, DateTime endAt)
