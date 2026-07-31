@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using TicketFlow.DTOs.Events;
-using TicketFlow.Exceptions;
-using TicketFlow.Services;
+using TicketFlow.Application.DTOs.Events;
+using TicketFlow.Domain.Exceptions;
+using TicketFlow.Application.Services;
 
 namespace TicketFlow.Tests
 {
@@ -122,7 +122,7 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public async Task RemoveEvent_ShouldReturnTrue_AndRemoveEventFromService()
+        public async Task RemoveEvent_ShouldRemoveEventFromService()
         {
             using var serviceProvider = TestHelpers.Create();
             using var scope = serviceProvider.CreateScope();
@@ -131,9 +131,8 @@ namespace TicketFlow.Tests
 
             var id = await service.AddEventAsync(_events.First());
 
-            var deleted = await service.RemoveEventAsync(id);
+            await service.RemoveEventAsync(id);
 
-            Assert.True(deleted);
             await Assert.ThrowsAsync<NotFoundException>(() => service.GetEventAsync(id));
         }
 

@@ -1,10 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
-using TicketFlow.DataAccess;
-using TicketFlow.Models;
-using TicketFlow.Services.Background;
+using TicketFlow.Application.Services.Background;
+using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 
 namespace TicketFlow.Tests
 {
@@ -12,9 +11,9 @@ namespace TicketFlow.Tests
     {
         private readonly Mock<ILogger<BookingProcessingBackgroundService>> _loggerMock = new();
 
-        private BookingProcessingBackgroundService CreateBackgroundService(ServiceProvider serviceProvider)
+        private BookingProcessingBackgroundService CreateBackgroundService(TestEnvironment env)
         {
-            var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            var scopeFactory = env.Provider.GetRequiredService<IServiceScopeFactory>();
 
             return new BookingProcessingBackgroundService(
                 scopeFactory,
@@ -40,42 +39,30 @@ namespace TicketFlow.Tests
         [Fact]
         public async Task ExecuteAsync_ShouldConvertPendingToConfirmed_AndSetProcessedAt()
         {
-            using var serviceProvider = TestHelpers.Create();
+            using var env = TestHelpers.Create();
 
             var eventItem = TestHelpers.CreateTestEvent(2);
             var booking = new Booking(eventItem.Id);
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            env.SeedEvent(eventItem);
+            env.SeedBooking(booking);
 
-                await context.Events.AddAsync(eventItem);
-                await context.Bookings.AddAsync(booking);
-                await context.SaveChangesAsync();
-            }
-
-            var service = CreateBackgroundService(serviceProvider);
+            var service = CreateBackgroundService(env);
 
             await RunBackgroundServiceForAsync(service);
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var processedBooking = env.FindBooking(booking.Id);
 
-                var processedBooking = await context.Bookings
-                    .AsNoTracking()
-                    .FirstAsync(b => b.Id == booking.Id);
-
-                Assert.Equal(BookingStatus.Confirmed, processedBooking.Status);
-                Assert.NotNull(processedBooking.ProcessedAt);
-                Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
-            }
+            Assert.NotNull(processedBooking);
+            Assert.Equal(BookingStatus.Confirmed, processedBooking.Status);
+            Assert.NotNull(processedBooking.ProcessedAt);
+            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
         }
 
         [Fact]
         public async Task ExecuteAsync_ShouldIgnoreAlreadyConfirmedBookings()
         {
-            using var serviceProvider = TestHelpers.Create();
+            using var env = TestHelpers.Create();
 
             var booking = new Booking(Guid.NewGuid())
             {
@@ -85,65 +72,40 @@ namespace TicketFlow.Tests
 
             var originalProcessedAt = booking.ProcessedAt;
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            env.SeedBooking(booking);
 
-                await context.Bookings.AddAsync(booking);
-                await context.SaveChangesAsync();
-            }
-
-            var service = CreateBackgroundService(serviceProvider);
+            var service = CreateBackgroundService(env);
 
             await RunBackgroundServiceForAsync(service, milliseconds: 1000);
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var resultBooking = env.FindBooking(booking.Id);
 
-                var resultBooking = await context.Bookings
-                    .AsNoTracking()
-                    .FirstAsync(b => b.Id == booking.Id);
-
-                Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
-                Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
-            }
+            Assert.NotNull(resultBooking);
+            Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
+            Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
         }
 
         [Fact]
         public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenEventDoesNotExist()
         {
-            using var serviceProvider = TestHelpers.Create();
+            using var env = TestHelpers.Create();
 
             var fakeEventId = Guid.NewGuid();
             var booking = new Booking(fakeEventId);
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            env.SeedBooking(booking);
 
-                await context.Bookings.AddAsync(booking);
-                await context.SaveChangesAsync();
-            }
-
-            var service = CreateBackgroundService(serviceProvider);
+            var service = CreateBackgroundService(env);
 
             await RunBackgroundServiceForAsync(service);
 
-            using (var scope = serviceProvider.CreateScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var processedBooking = env.FindBooking(booking.Id);
 
-                var processedBooking = await context.Bookings
-                    .AsNoTracking()
-                    .FirstAsync(b => b.Id == booking.Id);
-
-                Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
-                Assert.NotNull(processedBooking.ProcessedAt);
-                Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
-            }
+            Assert.NotNull(processedBooking);
+            Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
+            Assert.NotNull(processedBooking.ProcessedAt);
+            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
         }
 
     }
 }
-

@@ -1,7 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
-using TicketFlow.DataAccess;
+using TicketFlow.Application.DependencyInjection;
+using TicketFlow.Infrastructure.DependencyInjection;
+using TicketFlow.Infrastructure.Persistence;
 
 namespace TicketFlow.IntegrationTests.Infrastructure
 {
@@ -33,6 +36,16 @@ namespace TicketFlow.IntegrationTests.Infrastructure
                 .Options;
 
             return new AppDbContext(options);
+        }
+
+        public ServiceProvider CreateServiceProvider()
+        {
+            var services = new ServiceCollection();
+
+            services.AddInfrastructureServices(ConnectionString);
+            services.AddApplicationServices();
+
+            return services.BuildServiceProvider();
         }
 
         public async Task ResetDatabaseAsync()

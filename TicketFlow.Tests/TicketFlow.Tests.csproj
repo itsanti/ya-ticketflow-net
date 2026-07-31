@@ -9,8 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector"  />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq"  />
     <PackageReference Include="xunit"  />
@@ -18,7 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TicketFlow\TicketFlow.csproj" />
+    <ProjectReference Include="..\TicketFlow.Application\TicketFlow.Application.csproj" />
+    <ProjectReference Include="..\TicketFlow.Domain\TicketFlow.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
