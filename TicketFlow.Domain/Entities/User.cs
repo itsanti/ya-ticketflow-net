@@ -15,6 +15,8 @@ namespace TicketFlow.Domain.Entities
 
         private User()
         {
+            Login = null!;
+            PasswordHash = null!;
         }
 
         public static User Create(string login, string passwordHash, UserRole role)

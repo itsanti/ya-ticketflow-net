@@ -14,7 +14,7 @@ namespace TicketFlow.Presentation
 
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-            builder.Services.AddInfrastructureServices(connectionString);
+            builder.Services.AddInfrastructureServices(connectionString, builder.Configuration);
 
             builder.Services.AddApplicationServices();
 
