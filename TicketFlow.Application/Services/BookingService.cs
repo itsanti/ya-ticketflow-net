@@ -1,6 +1,7 @@
 ﻿using TicketFlow.Application.Abstractions;
 using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Domain.Entities;
+using TicketFlow.Domain.Enums;
 using TicketFlow.Domain.Exceptions;
 
 namespace TicketFlow.Application.Services
@@ -13,9 +14,11 @@ namespace TicketFlow.Application.Services
         private readonly IEventRepository _eventRepo = eventRepo;
         private readonly IBookingRepository _bookingRepo = bookingRepo;
 
+        private const int MaxActiveBookingsPerUser = 10;
+
         private static readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
 
-        public async Task<BookingResponseDto> CreateBookingAsync(Guid eventId)
+        public async Task<BookingResponseDto> CreateBookingAsync(Guid eventId, Guid userId)
         {
             await _bookingSemaphore.WaitAsync();
             try
@@ -27,13 +30,25 @@ namespace TicketFlow.Application.Services
                     throw new NotFoundException($"Cannot create booking. Event with ID {eventId} not found.");
                 }
 
+                if (eventItem.StartAt <= DateTime.UtcNow)
+                {
+                    throw new EventAlreadyStartedException($"Event with ID {eventId} already started.");
+                }
+
+                int count = await _bookingRepo.CountActiveBookingsByUserAsync(userId);
+
+                if (count >= MaxActiveBookingsPerUser)
+                {
+                    throw new BookingLimitExceededException("Booking limit exceeded");
+                }
+
                 bool ok = eventItem.TryReserveSeats();
                 if (!ok)
                 {
                     throw new NoAvailableSeatsException($"Cannot create booking. No available seats for event with ID {eventId}.");
                 }
 
-                var booking = new Booking(eventId);
+                var booking = new Booking(eventId, userId);
 
                 await _bookingRepo.AddAsync(booking);
                 await _bookingRepo.SaveChangesAsync();
@@ -67,6 +82,24 @@ namespace TicketFlow.Application.Services
                 CreatedAt = booking.CreatedAt,
                 ProcessedAt = booking.ProcessedAt
             };
+        }
+
+        public async Task CancelBookingAsync(Guid bookingId, Guid userId, UserRole role)
+        {
+            var booking = await _bookingRepo.GetByIdAsync(bookingId);
+
+            if (booking == null)
+            {
+                throw new NotFoundException($"Cannot find booking with ID {bookingId}.");
+            }
+
+            if (booking.UserId != userId && role != UserRole.Admin)
+            {
+                throw new ForbiddenException("You can not cancel other user booking.");
+            }
+
+            booking.Cancel();
+            await _bookingRepo.SaveChangesAsync();
         }
     }
 }

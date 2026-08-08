@@ -20,6 +20,7 @@ namespace TicketFlow.Infrastructure.DependencyInjection
 
             services.AddScoped<IEventRepository, EventRepository>();
             services.AddScoped<IBookingRepository, BookingRepository>();
+            services.AddScoped<IUserRepository, UserRepository>();
             services.AddSingleton<IPasswordHasher, PasswordHasher>();
 
             services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));

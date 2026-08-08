@@ -25,7 +25,7 @@ namespace TicketFlow.Presentation.Controllers
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
         public async Task<ActionResult<BookingResponseDto>> CreateBooking(Guid id)
         {
-            var booking = await _bookingService.CreateBookingAsync(id);
+            var booking = await _bookingService.CreateBookingAsync(id, Guid.Empty); // TODO: заменить на userId из claims (Этап 6)
 
             return AcceptedAtAction(nameof(GetBooking), new { id = booking.Id }, booking);
         }

@@ -20,6 +20,10 @@ namespace TicketFlow.Infrastructure.Persistence.Configurations
                 .HasColumnName("event_id")
                 .IsRequired();
 
+            builder.Property(b => b.UserId)
+                .HasColumnName("user_id")
+                .IsRequired();
+
             builder.Property(b => b.Status)
                 .HasColumnName("status")
                 .IsRequired()
@@ -37,6 +41,11 @@ namespace TicketFlow.Infrastructure.Persistence.Configurations
                 .WithMany(e => e.Bookings)
                 .HasForeignKey(b => b.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasOne(b => b.User)
+                .WithMany()
+                .HasForeignKey(b => b.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

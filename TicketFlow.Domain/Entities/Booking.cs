@@ -19,6 +19,8 @@ namespace TicketFlow.Domain.Entities
 
         public Event Event { get; private set; } = null!;
 
+        public User User { get; private set; } = null!;
+
         private Booking()
         {
         }

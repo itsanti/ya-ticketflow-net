@@ -1,8 +1,8 @@
-﻿using TicketFlow.Application.Abstractions;
-using TicketFlow.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using TicketFlow.Application.Abstractions;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;
+using TicketFlow.Infrastructure.Persistence;
 
 namespace TicketFlow.Infrastructure.Repositories
 {
@@ -40,6 +40,15 @@ namespace TicketFlow.Infrastructure.Repositories
                             .Where(b => b.Status == BookingStatus.Pending)
                             .Select(b => b.Id)
                             .ToListAsync(ct);
+        }
+
+        public async Task<int> CountActiveBookingsByUserAsync(Guid userId, CancellationToken ct = default)
+        {
+            return await _context.Bookings
+                            .AsNoTracking()
+                            .Where(b => b.UserId == userId
+                                   && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
+                            .CountAsync(ct);
         }
 
         public async Task SaveChangesAsync(CancellationToken ct = default)
