@@ -36,12 +36,25 @@ namespace TicketFlow.IntegrationTests.Services
             return eventItem;
         }
 
+        private async Task<User> StoreUser()
+        {
+            await using var context = _fixture.CreateContext();
+
+            var user = User.Create($"user-{Guid.NewGuid()}", "hash", UserRole.User);
+
+            await context.Users.AddAsync(user);
+            await context.SaveChangesAsync();
+
+            return user;
+        }
+
         [Fact]
         public async Task CreateBookingAsync_ShouldPersistBookingAndReserveSeat()
         {
             await _fixture.ResetDatabaseAsync();
 
             var eventItem = await StoreEvent(totalSeats: 10);
+            var user = await StoreUser();
 
             await using var serviceProvider = _fixture.CreateServiceProvider();
 
@@ -49,7 +62,7 @@ namespace TicketFlow.IntegrationTests.Services
             {
                 var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                await bookingService.CreateBookingAsync(eventItem.Id);
+                await bookingService.CreateBookingAsync(eventItem.Id, user.Id);
             }
 
             await using var context = _fixture.CreateContext();
@@ -73,6 +86,8 @@ namespace TicketFlow.IntegrationTests.Services
             await _fixture.ResetDatabaseAsync();
 
             var eventItem = await StoreEvent(totalSeats: 1);
+            var firstUser = await StoreUser();
+            var secondUser = await StoreUser();
 
             await using var serviceProvider = _fixture.CreateServiceProvider();
 
@@ -80,7 +95,7 @@ namespace TicketFlow.IntegrationTests.Services
             {
                 var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                await bookingService.CreateBookingAsync(eventItem.Id);
+                await bookingService.CreateBookingAsync(eventItem.Id, firstUser.Id);
             }
 
             using (var scope = serviceProvider.CreateScope())
@@ -88,7 +103,7 @@ namespace TicketFlow.IntegrationTests.Services
                 var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
                 await Assert.ThrowsAsync<NoAvailableSeatsException>(() =>
-                    bookingService.CreateBookingAsync(eventItem.Id));
+                    bookingService.CreateBookingAsync(eventItem.Id, secondUser.Id));
             }
 
             await using var context = _fixture.CreateContext();

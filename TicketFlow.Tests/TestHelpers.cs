@@ -182,6 +182,17 @@ namespace TicketFlow.Tests
                 });
 
             BookingRepository
+                .Setup(r => r.CountActiveBookingsByUserAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid userId, CancellationToken _) =>
+                {
+                    lock (_sync)
+                    {
+                        return _bookings.Count(b => b.UserId == userId
+                            && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
+                    }
+                });
+
+            BookingRepository
                 .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
         }

@@ -19,11 +19,12 @@ namespace TicketFlow.Tests
             var eventItem = TestHelpers.CreateTestEvent(2);
             var eventId = Guid.NewGuid();
             eventItem.Id = eventId;
+            var userId = Guid.NewGuid();
 
             env.SeedEvent(eventItem);
 
             var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
-            var booking = await bookingService.CreateBookingAsync(eventItem.Id);
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
 
             Assert.NotEqual(Guid.Empty, booking.Id);
             Assert.Equal(eventId, booking.EventId);
@@ -44,8 +45,8 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            var booking1 = await bookingService.CreateBookingAsync(eventId);
-            var booking2 = await bookingService.CreateBookingAsync(eventId);
+            var booking1 = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
+            var booking2 = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
 
             Assert.NotEqual(booking1.Id, booking2.Id);
         }
@@ -63,7 +64,7 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            var createdBooking = await bookingService.CreateBookingAsync(eventId);
+            var createdBooking = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
 
             var retrievedBooking = await bookingService.GetBookingByIdAsync(createdBooking.Id);
 
@@ -100,7 +101,7 @@ namespace TicketFlow.Tests
             {
                 var bookingService = createScope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                booking = await bookingService.CreateBookingAsync(eventItem.Id);
+                booking = await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
             }
 
             var bookingToUpdate = env.FindBooking(booking.Id);
@@ -132,7 +133,7 @@ namespace TicketFlow.Tests
             var fakeEventId = Guid.NewGuid();
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.CreateBookingAsync(fakeEventId));
+                bookingService.CreateBookingAsync(fakeEventId, Guid.NewGuid()));
         }
 
         [Fact]
@@ -148,7 +149,7 @@ namespace TicketFlow.Tests
             env.RemoveEvent(eventItem);
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.CreateBookingAsync(eventItem.Id));
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
         }
 
         [Fact]
@@ -162,7 +163,7 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             var storedEvent = env.FindEvent(eventItem.Id);
 
@@ -181,7 +182,7 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             env.BookingRepository.Verify(
                 r => r.SaveChangesAsync(It.IsAny<CancellationToken>()),
@@ -203,10 +204,10 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             await Assert.ThrowsAsync<NoAvailableSeatsException>(() =>
-                bookingService.CreateBookingAsync(eventItem.Id));
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
         }
 
         [Fact]
@@ -227,7 +228,7 @@ namespace TicketFlow.Tests
 
                     try
                     {
-                        var booking = await bookingService.CreateBookingAsync(eventItem.Id);
+                        var booking = await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
                         return booking.Id;
                     }
                     catch (NoAvailableSeatsException)
@@ -270,7 +271,7 @@ namespace TicketFlow.Tests
 
                         var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                        return await bookingService.CreateBookingAsync(eventItem.Id);
+                        return await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
                     }));
 
             var bookings = await Task.WhenAll(tasks);
