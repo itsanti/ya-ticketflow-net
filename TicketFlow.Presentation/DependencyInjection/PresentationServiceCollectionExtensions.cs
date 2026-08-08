@@ -36,7 +36,23 @@ namespace TicketFlow.Presentation.DependencyInjection
                     };
                 });
 
-            services.AddProblemDetails();
+            services.AddProblemDetails(options =>
+            {
+                options.CustomizeProblemDetails = context =>
+                {
+                    context.ProblemDetails.Type = null;
+                    context.ProblemDetails.Title = context.ProblemDetails.Status switch
+                    {
+                        StatusCodes.Status400BadRequest => "Validation error",
+                        StatusCodes.Status401Unauthorized => "Unauthorized",
+                        StatusCodes.Status403Forbidden => "Forbidden",
+                        StatusCodes.Status404NotFound => "Not found",
+                        StatusCodes.Status409Conflict => "Conflict",
+                        StatusCodes.Status500InternalServerError => "Internal server error",
+                        _ => context.ProblemDetails.Title
+                    };
+                };
+            });
 
             services.AddAuthenticationServices(configuration);
 

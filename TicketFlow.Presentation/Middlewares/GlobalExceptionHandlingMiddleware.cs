@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System.Net;
 using TicketFlow.Domain.Exceptions;
 
 namespace TicketFlow.Presentation.Middlewares
@@ -8,13 +7,16 @@ namespace TicketFlow.Presentation.Middlewares
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<GlobalExceptionHandlingMiddleware> _logger;
+        private readonly IProblemDetailsService _problemDetailsService;
 
         public GlobalExceptionHandlingMiddleware(
             RequestDelegate next,
-            ILogger<GlobalExceptionHandlingMiddleware> logger)
+            ILogger<GlobalExceptionHandlingMiddleware> logger,
+            IProblemDetailsService problemDetailsService)
         {
             _next = next;
             _logger = logger;
+            _problemDetailsService = problemDetailsService;
         }
 
         public async Task InvokeAsync(HttpContext httpContext)
@@ -38,31 +40,24 @@ namespace TicketFlow.Presentation.Middlewares
 
             var statusCode = MapStatusCode(ex);
 
-            httpContext.Response.StatusCode = statusCode;
-            httpContext.Response.ContentType = "application/json";
-
-            var error = new ProblemDetails
+            if (statusCode == StatusCodes.Status500InternalServerError)
             {
-                Status = statusCode,
-                Detail = statusCode == StatusCodes.Status500InternalServerError
-                 ? "An unexpected error occurred on the server."
-                 : ex.Message,
-                Title = statusCode switch
+                _logger.LogError(ex, ex.Message);
+            }
+
+            httpContext.Response.StatusCode = statusCode;
+
+            await _problemDetailsService.WriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = httpContext,
+                ProblemDetails = new ProblemDetails
                 {
-                    (int)HttpStatusCode.NotFound => "Not found",
-                    (int)HttpStatusCode.BadRequest => "Validation error",
-                    (int)HttpStatusCode.Conflict => "Conflict",
-                    _ => LogAndReturn(ex)
-                },
-            };
-
-            await httpContext.Response.WriteAsJsonAsync(error);
-        }
-
-        private string LogAndReturn(Exception ex)
-        {
-            _logger.LogError(ex, ex.Message);
-            return "Internal server error";
+                    Status = statusCode,
+                    Detail = statusCode == StatusCodes.Status500InternalServerError
+                        ? "An unexpected error occurred on the server."
+                        : ex.Message
+                }
+            });
         }
 
         private static int MapStatusCode(Exception ex)
