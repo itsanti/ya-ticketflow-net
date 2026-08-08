@@ -284,5 +284,64 @@ namespace TicketFlow.Tests
             Assert.Equal(seats, allBookings.Count);
             Assert.Equal(seats, allBookings.Select(b => b.Id).Distinct().Count());
         }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldThrowEventAlreadyStartedException_WhenEventHasAlreadyStarted()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateStartedTestEvent(10);
+
+            env.SeedEvent(eventItem);
+
+            await Assert.ThrowsAsync<EventAlreadyStartedException>(() =>
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldThrowBookingLimitExceededException_WhenUserReachesActiveBookingsLimit()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(20);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await bookingService.CreateBookingAsync(eventItem.Id, userId);
+            }
+
+            await Assert.ThrowsAsync<BookingLimitExceededException>(() =>
+                bookingService.CreateBookingAsync(eventItem.Id, userId));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldSucceed_WhenAnotherUserHasReachedTheirOwnLimit()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(20);
+            var firstUserId = Guid.NewGuid();
+            var secondUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await bookingService.CreateBookingAsync(eventItem.Id, firstUserId);
+            }
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, secondUserId);
+
+            Assert.Equal(nameof(BookingStatus.Pending), booking.Status);
+        }
     }
 }

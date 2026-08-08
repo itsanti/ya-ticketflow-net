@@ -211,6 +211,17 @@ namespace TicketFlow.Tests
             );
         }
 
+        internal static Event CreateStartedTestEvent(int totalSeats)
+        {
+            return Event.Create(
+                "Уже начавшееся событие",
+                "Описание тестового события",
+                DateTime.UtcNow.AddHours(-2),
+                DateTime.UtcNow.AddHours(2),
+                totalSeats
+            );
+        }
+
         public static TestEnvironment Create() => new();
     }
 }
