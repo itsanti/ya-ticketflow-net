@@ -18,7 +18,7 @@ namespace TicketFlow.Presentation
 
             builder.Services.AddApplicationServices();
 
-            builder.Services.AddPresentationServices();
+            builder.Services.AddPresentationServices(builder.Configuration);
 
             var app = builder.Build();
 
@@ -36,6 +36,7 @@ namespace TicketFlow.Presentation
             }
 
             app.UseHttpsRedirection();
+            app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
 
