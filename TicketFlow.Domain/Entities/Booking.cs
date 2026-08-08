@@ -1,4 +1,5 @@
 using TicketFlow.Domain.Enums;
+using TicketFlow.Domain.Exceptions;
 
 namespace TicketFlow.Domain.Entities
 {
@@ -6,7 +7,9 @@ namespace TicketFlow.Domain.Entities
     {
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        public Guid EventId { get; set; }
+        public Guid EventId { get; private set; }
+
+        public Guid UserId { get; private set; }
 
         public BookingStatus Status { get; set; } = BookingStatus.Pending;
 
@@ -20,9 +23,10 @@ namespace TicketFlow.Domain.Entities
         {
         }
 
-        public Booking(Guid eventId)
+        public Booking(Guid eventId, Guid userId)
         {
             EventId = eventId;
+            UserId = userId;
         }
 
         public void Confirm()
@@ -34,6 +38,17 @@ namespace TicketFlow.Domain.Entities
         public void Reject()
         {
             Status = BookingStatus.Rejected;
+            ProcessedAt = DateTime.UtcNow;
+        }
+
+        public void Cancel()
+        {
+            if (Status is BookingStatus.Cancelled or BookingStatus.Rejected)
+            {
+                throw new InvalidOperationDomainException("Booking cannot be cancelled in its current status");
+            }
+
+            Status = BookingStatus.Cancelled;
             ProcessedAt = DateTime.UtcNow;
         }
     }
