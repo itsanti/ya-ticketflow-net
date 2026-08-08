@@ -1,10 +1,8 @@
-﻿using TicketFlow.Domain.Enums;
-
-namespace TicketFlow.Application.Services
+﻿namespace TicketFlow.Application.Services
 {
     public interface IUserService
     {
-        Task RegisterAsync(string login, string password, UserRole role);
+        Task RegisterAsync(string login, string password, string role);
         Task<string> LoginAsync(string login, string password);
     }
 }

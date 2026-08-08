@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using TicketFlow.Domain.Enums;
 
 namespace TicketFlow.Application.DTOs.Users
 {
@@ -11,6 +10,7 @@ namespace TicketFlow.Application.DTOs.Users
         [Required]
         public required string Password { get; set; }
 
-        public UserRole Role { get; set; } = UserRole.User;
+        /// <summary>Роль пользователя: User или Admin. По умолчанию — User.</summary>
+        public string Role { get; set; } = nameof(Domain.Enums.UserRole.User);
     }
 }
