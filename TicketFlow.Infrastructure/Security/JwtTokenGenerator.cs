@@ -16,7 +16,6 @@ namespace TicketFlow.Infrastructure.Security
         {
             var claims = new[]
             {
-                new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
                 new Claim(ClaimTypes.Name, login),
                 new Claim(ClaimTypes.Role, role.ToString()),
