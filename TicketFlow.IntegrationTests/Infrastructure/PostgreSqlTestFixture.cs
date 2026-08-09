@@ -54,7 +54,7 @@ namespace TicketFlow.IntegrationTests.Infrastructure
                 .Build();
 
             services.AddInfrastructureServices(ConnectionString, configuration);
-            services.AddApplicationServices();
+            services.AddApplicationServices(configuration);
 
             return services.BuildServiceProvider();
         }

@@ -1,5 +1,7 @@
-﻿using TicketFlow.Application.Abstractions;
+﻿using Microsoft.Extensions.Options;
+using TicketFlow.Application.Abstractions;
 using TicketFlow.Application.DTOs.Bookings;
+using TicketFlow.Application.Options;
 using TicketFlow.Domain.Entities;
 using TicketFlow.Domain.Enums;
 using TicketFlow.Domain.Exceptions;
@@ -8,13 +10,13 @@ namespace TicketFlow.Application.Services
 {
     public class BookingService(
         IEventRepository eventRepo,
-        IBookingRepository bookingRepo
+        IBookingRepository bookingRepo,
+        IOptions<BookingSettings> bookingSettings
         ) : IBookingService
     {
         private readonly IEventRepository _eventRepo = eventRepo;
         private readonly IBookingRepository _bookingRepo = bookingRepo;
-
-        private const int MaxActiveBookingsPerUser = 10;
+        private readonly int _maxActiveBookingsPerUser = bookingSettings.Value.MaxActiveBookingsPerUser;
 
         private static readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
 
@@ -37,10 +39,10 @@ namespace TicketFlow.Application.Services
 
                 int count = await _bookingRepo.CountActiveBookingsByUserAsync(userId);
 
-                if (count >= MaxActiveBookingsPerUser)
+                if (count >= _maxActiveBookingsPerUser)
                 {
                     throw new BookingLimitExceededException(
-                        $"Booking limit exceeded: {MaxActiveBookingsPerUser} active bookings per user.");
+                        $"Booking limit exceeded: {_maxActiveBookingsPerUser} active bookings per user.");
                 }
 
                 bool ok = eventItem.TryReserveSeats();

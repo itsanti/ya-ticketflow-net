@@ -107,7 +107,7 @@ Composition root находится в `Program.cs` — он читает кон
 
 ```csharp
 builder.Services.AddInfrastructureServices(connectionString, builder.Configuration);
-builder.Services.AddApplicationServices();
+builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddPresentationServices(builder.Configuration);
 ```
 
@@ -567,9 +567,9 @@ dotnet test ./TicketFlow.IntegrationTests/TicketFlow.IntegrationTests.csproj
 
 Проект `TicketFlow.Tests` проверяет бизнес-логику доменных моделей, сервисов и фоновой обработки.
 
-Юнит-тесты не зависят от инфраструктуры: проект ссылается только на `Domain` и `Application`, а порты `IEventRepository` и `IBookingRepository` подменяются моками через Moq. Состояние хранится в памяти теста, база данных не используется вообще.
+Сервисные тесты не зависят от базы данных: порты `IEventRepository` и `IBookingRepository` подменяются моками через Moq, состояние хранится в памяти теста. Проект также ссылается на `Infrastructure`, чтобы напрямую тестировать конкретные реализации без портов — `PasswordHasher` (BCrypt) и `JwtTokenGenerator`.
 
-Общее окружение собирается в `TestEnvironment`: он настраивает моки портов, регистрирует их синглтонами и вызывает `AddApplicationServices()`, поэтому тесты работают с теми же сервисами, что и приложение:
+Общее окружение для сервисных тестов собирается в `TestEnvironment`: он настраивает моки портов, регистрирует их синглтонами и вызывает `AddApplicationServices(configuration)` (с пустой `IConfiguration` — секция `Booking` не задана, действует значение по умолчанию), поэтому тесты работают с теми же сервисами, что и приложение:
 
 ```csharp
 using var env = TestHelpers.Create();
@@ -699,7 +699,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 1. Событие существует (иначе `NotFoundException` → 404).
 2. Событие ещё не началось: `event.StartAt` должен быть в будущем (иначе `EventAlreadyStartedException` → 400).
-3. У пользователя не превышен лимит активных броней — по умолчанию **10** одновременных броней в статусе `Pending`/`Confirmed` (иначе `BookingLimitExceededException` → 409). Лимит задан константой `MaxActiveBookingsPerUser` в `BookingService`.
+3. У пользователя не превышен лимит активных броней — по умолчанию **10** одновременных броней в статусе `Pending`/`Confirmed` (иначе `BookingLimitExceededException` → 409, с указанием значения лимита в сообщении). Лимит задаётся конфигурацией `Booking:MaxActiveBookingsPerUser` (`appsettings.json`, секция `Booking`; биндится в `BookingSettings` через `IOptions`), 10 — значение по умолчанию, если секция не задана.
 4. У события есть свободные места (иначе `NoAvailableSeatsException` → 409).
 
 При отмене брони (`BookingService.CancelBookingAsync`, `DELETE /bookings/{id}`):

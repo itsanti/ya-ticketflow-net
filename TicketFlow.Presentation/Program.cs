@@ -19,7 +19,7 @@ namespace TicketFlow.Presentation
 
             builder.Services.AddInfrastructureServices(connectionString, builder.Configuration);
 
-            builder.Services.AddApplicationServices();
+            builder.Services.AddApplicationServices(builder.Configuration);
 
             builder.Services.AddPresentationServices(builder.Configuration);
 

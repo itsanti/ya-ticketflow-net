@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using TicketFlow.Application.Abstractions;
@@ -30,7 +31,7 @@ namespace TicketFlow.Tests
             services.AddSingleton(EventRepository.Object);
             services.AddSingleton(BookingRepository.Object);
 
-            services.AddApplicationServices();
+            services.AddApplicationServices(new ConfigurationBuilder().Build());
 
             Provider = services.BuildServiceProvider();
         }
