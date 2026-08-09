@@ -13,6 +13,12 @@ namespace TicketFlow.Application.Services
     {
         private const string InvalidCredentialsMessage = "Invalid login or password.";
 
+        // Precomputed BCrypt hash (workFactor 12) of an arbitrary, never-used password.
+        // Verified against when the login does not exist, so LoginAsync takes the same
+        // amount of time whether or not the account is real (prevents timing-based
+        // user enumeration on /auth/login).
+        private const string SentinelPasswordHash = "$2b$12$AbGYGsdQfIEXhndtnuqDbeuoNzKuLBJrmlnUzcK.UXK.rrbSaG.Ya";
+
         private readonly IUserRepository _userRepo = userRepo;
         private readonly IPasswordHasher _hasher = hasher;
         private readonly IJwtTokenGenerator _jwtGenerator = jwtGenerator;
@@ -37,7 +43,9 @@ namespace TicketFlow.Application.Services
         {
             var user = await _userRepo.GetByLoginAsync(login);
 
-            if (user == null || !_hasher.Verify(password, user.PasswordHash))
+            var passwordValid = _hasher.Verify(password, user?.PasswordHash ?? SentinelPasswordHash);
+
+            if (user == null || !passwordValid)
             {
                 throw new UnauthorizedException(InvalidCredentialsMessage);
             }

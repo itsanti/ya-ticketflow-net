@@ -71,6 +71,10 @@ namespace TicketFlow.Tests
 
             await Assert.ThrowsAsync<UnauthorizedException>(() =>
                 _userService.LoginAsync("unknown", "any-password"));
+
+            _hasher.Verify(
+                h => h.Verify("any-password", It.Is<string>(hash => hash != null)),
+                Times.Once);
         }
 
         [Fact]
