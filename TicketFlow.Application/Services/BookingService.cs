@@ -39,7 +39,8 @@ namespace TicketFlow.Application.Services
 
                 if (count >= MaxActiveBookingsPerUser)
                 {
-                    throw new BookingLimitExceededException("Booking limit exceeded");
+                    throw new BookingLimitExceededException(
+                        $"Booking limit exceeded: {MaxActiveBookingsPerUser} active bookings per user.");
                 }
 
                 bool ok = eventItem.TryReserveSeats();
