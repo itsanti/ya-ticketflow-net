@@ -98,6 +98,18 @@ namespace TicketFlow.Application.Services
                 throw new ForbiddenException("You can not cancel other user booking.");
             }
 
+            var eventItem = await _eventRepo.GetByIdAsync(booking.EventId);
+
+            if (eventItem == null)
+            {
+                throw new NotFoundException($"Event with ID {booking.EventId} not found.");
+            }
+
+            if (eventItem.StartAt <= DateTime.UtcNow)
+            {
+                throw new EventAlreadyStartedException($"Event with ID {booking.EventId} already started.");
+            }
+
             booking.Cancel();
             await _bookingRepo.SaveChangesAsync();
         }

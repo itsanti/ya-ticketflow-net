@@ -343,5 +343,65 @@ namespace TicketFlow.Tests
 
             Assert.Equal(nameof(BookingStatus.Pending), booking.Status);
         }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldCancelBooking_WhenOwnerCancelsBeforeEventStart()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
+
+            await bookingService.CancelBookingAsync(booking.Id, userId, UserRole.User);
+
+            var storedBooking = env.FindBooking(booking.Id);
+
+            Assert.NotNull(storedBooking);
+            Assert.Equal(BookingStatus.Cancelled, storedBooking.Status);
+        }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldThrowForbiddenException_WhenNonOwnerNonAdminCancels()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var otherUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                bookingService.CancelBookingAsync(booking.Id, otherUserId, UserRole.User));
+        }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldThrowEventAlreadyStartedException_WhenEventHasAlreadyStarted()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateStartedTestEvent(10);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+            env.SeedBooking(new Booking(eventItem.Id, userId));
+
+            var booking = env.AllBookings().Single(b => b.EventId == eventItem.Id);
+
+            await Assert.ThrowsAsync<EventAlreadyStartedException>(() =>
+                bookingService.CancelBookingAsync(booking.Id, userId, UserRole.User));
+        }
     }
 }
