@@ -1,12 +1,22 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using System.Text;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using TicketFlow.Infrastructure.Security;
 
 namespace TicketFlow.Presentation.DependencyInjection
 {
     public static class PresentationServiceCollectionExtensions
     {
-        public static IServiceCollection AddPresentationServices(this IServiceCollection services)
+        public static IServiceCollection AddPresentationServices(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                })
                 .ConfigureApiBehaviorOptions(options =>
                 {
                     options.InvalidModelStateResponseFactory = context =>
@@ -26,12 +36,72 @@ namespace TicketFlow.Presentation.DependencyInjection
                     };
                 });
 
-            services.AddProblemDetails();
+            services.AddProblemDetails(options =>
+            {
+                options.CustomizeProblemDetails = context =>
+                {
+                    context.ProblemDetails.Type = null;
+                    context.ProblemDetails.Title = context.ProblemDetails.Status switch
+                    {
+                        StatusCodes.Status400BadRequest => "Validation error",
+                        StatusCodes.Status401Unauthorized => "Unauthorized",
+                        StatusCodes.Status403Forbidden => "Forbidden",
+                        StatusCodes.Status404NotFound => "Not found",
+                        StatusCodes.Status409Conflict => "Conflict",
+                        StatusCodes.Status500InternalServerError => "Internal server error",
+                        _ => context.ProblemDetails.Title
+                    };
+                };
+            });
+
+            services.AddAuthenticationServices(configuration);
 
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             services.AddOpenApi();
             services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen();
+            services.AddSwaggerGen(options =>
+            {
+                options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Введите JWT-токен в формате: Bearer {токен}"
+                });
+
+                options.AddSecurityRequirement(document => new()
+                {
+                    [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+                });
+            });
+
+            return services;
+        }
+
+        private static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration)
+        {
+            var jwtSection = configuration.GetSection(JwtOptions.SectionName);
+            var jwtOptions = jwtSection.Get<JwtOptions>()
+                ?? throw new InvalidOperationException($"Configuration section '{JwtOptions.SectionName}' is missing.");
+
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret))
+                    };
+                });
+
+            services.AddAuthorization();
 
             return services;
         }

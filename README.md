@@ -16,6 +16,7 @@
 - **Спринт 5**: Переход на PostgreSQL и Entity Framework Core, настройка `AppDbContext`, Fluent API-маппинг, обновление сервисов и тестов ✅
 - **Спринт 6**: Миграции EF Core, репозиторный слой, интеграционные тесты с PostgreSQL через Testcontainers ✅
 - **Спринт 7**: Переход на чистую архитектуру — разделение проекта на четыре сборки (Domain, Application, Infrastructure, Presentation), интерфейсы портов и composition root ✅
+- **Спринт 8**: JWT-аутентификация и ролевая авторизация (сущность `User`, роли `Admin`/`User`), доменные правила бронирования — запрет брони прошедшего события, лимит активных броней на пользователя, отмена брони с проверкой прав владельца ✅
 ---
 
 ## 🏗 Структура проекта
@@ -24,31 +25,35 @@
 
 ```text
 ├── TicketFlow.Domain/                  # Доменный слой (без внешних зависимостей)
-│   ├── Entities/                       # Доменные сущности с бизнес-логикой (Event, Booking)
-│   ├── Enums/                          # Доменные перечисления (BookingStatus)
+│   ├── Entities/                       # Доменные сущности с бизнес-логикой (Event, Booking, User)
+│   ├── Enums/                          # Доменные перечисления (BookingStatus, UserRole)
 │   └── Exceptions/                     # Доменные исключения (DomainException и наследники)
 ├── TicketFlow.Application/             # Прикладной слой (зависит только от Domain)
-│   ├── Abstractions/                   # Интерфейсы портов (IEventRepository, IBookingRepository)
+│   ├── Abstractions/                   # Интерфейсы портов (IEventRepository, IBookingRepository, IUserRepository, IPasswordHasher, IJwtTokenGenerator)
 │   ├── DTOs/
 │   │   ├── Bookings/                   # BookingResponseDto
 │   │   ├── Events/                     # CreateEventDto, UpdateEventDto, EventInfoDto, EventFiltersDto
+│   │   ├── Users/                      # RegisterUserDto, LoginUserDto, AuthResponseDto
 │   │   └── Pagination/                 # PaginationParams, PaginatedResult
-│   ├── Services/                       # Use cases (IEventService/EventService, IBookingService/BookingService)
+│   ├── Services/                       # Use cases (IEventService/EventService, IBookingService/BookingService, IUserService/UserService)
 │   │   └── Background/                 # Фоновая обработка заявок (BookingProcessingBackgroundService)
+│   ├── Concurrency/                    # KeyedAsyncLock — per-key async-лок (используется BookingService)
 │   └── DependencyInjection/            # AddApplicationServices
 ├── TicketFlow.Infrastructure/          # Инфраструктурный слой (зависит от Application и Domain)
 │   ├── Persistence/
 │   │   ├── AppDbContext.cs             # DbContext приложения
-│   │   ├── Configurations/             # Fluent API-конфигурации сущностей
+│   │   ├── Configurations/             # Fluent API-конфигурации сущностей (в т.ч. UserConfiguration)
 │   │   └── Migrations/                 # EF Core-миграции схемы БД
-│   ├── Repositories/                   # Реализации портов (EventRepository, BookingRepository)
+│   ├── Repositories/                   # Реализации портов (EventRepository, BookingRepository, UserRepository)
+│   ├── Security/                       # PasswordHasher (BCrypt), JwtTokenGenerator, JwtOptions
 │   └── DependencyInjection/            # AddInfrastructureServices, ApplyMigrations
 ├── TicketFlow.Presentation/            # Presentation — точка входа (зависит от Application и Infrastructure)
-│   ├── Controllers/                    # Эндпоинты REST API (EventsController, BookingsController)
+│   ├── Controllers/                    # Эндпоинты REST API (EventsController, BookingsController, AuthController)
 │   ├── Middlewares/                    # Логирование запросов, глобальный перехват ошибок
-│   ├── DependencyInjection/            # AddPresentationServices
+│   ├── DependencyInjection/            # AddPresentationServices (MVC, JWT-аутентификация, Swagger)
 │   ├── Program.cs                      # Composition root приложения
-│   └── appsettings.json                # Настройки приложения
+│   ├── appsettings.json                 # Несекретные настройки (Issuer/Audience/ExpirationMinutes)
+│   └── appsettings.Development.json     # Dev-секреты (Jwt:Secret, строка подключения к локальному Postgres)
 ├── TicketFlow.Tests/                   # Юнит-тесты (ссылаются на Domain и Application, порты — моки)
 │   ├── Models/                         # Изолированные тесты доменных моделей (EventTests, BookingTests)
 │   └── *ServiceTests.cs                # Тесты бизнес-логики и конкурентного доступа
@@ -67,17 +72,19 @@ Presentation ──> Application <── Infrastructure
 
 ### Domain — что такое предметная область
 
-Доменные сущности, перечисления и исключения. Слой описывает бизнес-правила в отрыве от способа их применения: `Event` сам следит за количеством мест (`TryReserveSeats`, `ReleaseSeats`), `Booking` сам управляет своим статусом (`Confirm`, `Reject`).
+Доменные сущности, перечисления и исключения. Слой описывает бизнес-правила в отрыве от способа их применения: `Event` сам следит за количеством мест (`TryReserveSeats`, `ReleaseSeats`), `Booking` сам управляет своим статусом (`Confirm`, `Reject`, `Cancel`).
+
+Сущность `User` хранит логин, хеш пароля и роль (`UserRole`: `User` / `Admin`) и, как остальные сущности, создаётся через фабричный метод `Create`, а не публичный конструктор. `Booking` связан с пользователем через `UserId` и умеет отменять себя: `Cancel()` переводит бронь в статус `Cancelled`, но запрещает повторную отмену уже отменённой или отклонённой брони.
 
 Domain не ссылается ни на один проект и не содержит ни одного NuGet-пакета — ни ASP.NET Core, ни EF Core. Благодаря этому доменные правила тестируются без базы данных и веб-хоста, а смена фреймворка или СУБД слоя не касается.
 
-Нарушение бизнес-правила выражается доменным исключением: `ValidationException`, `NotFoundException`, `NoAvailableSeatsException` наследуются от общего `DomainException`. Domain при этом не знает, что где-то они превратятся в HTTP-коды.
+Нарушение бизнес-правила выражается доменным исключением: `ValidationException`, `NotFoundException`, `NoAvailableSeatsException`, `EventAlreadyStartedException`, `BookingLimitExceededException`, `ForbiddenException`, `InvalidOperationDomainException` наследуются от общего `DomainException`. Domain при этом не знает, что где-то они превратятся в HTTP-коды.
 
 ### Application — что приложение умеет делать
 
-Сценарии использования: создать событие, забронировать место, получить статус брони. Здесь же живут DTO — контракты входа и выхода use cases — и фоновая обработка заявок.
+Сценарии использования: создать событие, забронировать место, получить статус брони, зарегистрировать и авторизовать пользователя. Здесь же живут DTO — контракты входа и выхода use cases — и фоновая обработка заявок.
 
-Ключевой элемент слоя — **интерфейсы портов** в `Abstractions/`. Application объявляет, что ему нужно от внешнего мира (`IEventRepository`, `IBookingRepository`), но не знает, кто и как это реализует. В этом суть инверсии зависимостей: интерфейс принадлежит тому, кто им пользуется, а не тому, кто его реализует.
+Ключевой элемент слоя — **интерфейсы портов** в `Abstractions/`. Application объявляет, что ему нужно от внешнего мира (`IEventRepository`, `IBookingRepository`, `IUserRepository`), но не знает, кто и как это реализует. Помимо репозиториев здесь же объявлены порты для аутентификации: `IPasswordHasher` (хеширование и проверка пароля) и `IJwtTokenGenerator` (выпуск JWT по данным пользователя). Application не знает, что хеш считается через BCrypt, а токен подписывается HMAC-SHA256 — это детали Infrastructure. В этом суть инверсии зависимостей: интерфейс принадлежит тому, кто им пользуется, а не тому, кто его реализует.
 
 Application ссылается только на Domain. Ссылки на Infrastructure нет — это ключевое правило, и его соблюдение проверяет компилятор, а не договорённость в команде.
 
@@ -85,20 +92,24 @@ Application ссылается только на Domain. Ссылки на Infra
 
 Адаптеры к внешним технологиям: `AppDbContext`, Fluent API-конфигурации, миграции и реализации репозиториев поверх EF Core и PostgreSQL. Слой реализует порты, объявленные в Application.
 
-Здесь сосредоточены все технологические решения. Замена PostgreSQL на другую СУБД или EF Core на Dapper затрагивает только эту сборку: Application и Domain остаются нетронутыми, потому что работают с интерфейсами.
+Здесь же живёт `Security/`: `PasswordHasher` (реализация `IPasswordHasher` на BCrypt, с поддержкой верификации legacy-хешей `System.Security.Cryptography.SHA256`) и `JwtTokenGenerator` (реализация `IJwtTokenGenerator` на `System.IdentityModel.Tokens.Jwt`), плюс `JwtOptions` — параметры токена, привязанные к секции `Jwt` конфигурации.
+
+Здесь сосредоточены все технологические решения. Замена PostgreSQL на другую СУБД, EF Core на Dapper или SHA-256 на BCrypt затрагивает только эту сборку: Application и Domain остаются нетронутыми, потому что работают с интерфейсами.
 
 ### Presentation — как этим пользоваться снаружи
 
 HTTP-обвязка: контроллеры, middleware и composition root. Контроллеры тонкие — принять запрос, вызвать сервис Application, вернуть результат с нужным кодом ответа. Ни бизнес-логики, ни маппинга доменных сущностей в них нет.
 
-Глобальный обработчик исключений транслирует доменные исключения в HTTP-статусы (`ValidationException` → 400, `NotFoundException` → 404, `NoAvailableSeatsException` → 409) в формате Problem Details. Это единственное место, где домен встречается с протоколом.
+Аутентификация подключена через `Microsoft.AspNetCore.Authentication.JwtBearer` — middleware проверяет подпись и срок жизни токена, а `[Authorize]` / `[Authorize(Roles = "Admin")]` на контроллерах решают, кому доступен эндпоинт. Идентификатор текущего пользователя `BookingsController` читает из claims токена (`ClaimTypes.NameIdentifier`) и передаёт в сервисы бронирования.
+
+Глобальный обработчик исключений транслирует доменные исключения в HTTP-статусы (`ValidationException` → 400, `NotFoundException` → 404, `NoAvailableSeatsException` → 409, `EventAlreadyStartedException` → 400, `BookingLimitExceededException` → 409, `ForbiddenException` → 403) в формате Problem Details. Ответы 401/403, которые выдаёт сама авторизационная middleware ASP.NET Core (то есть без единого доменного исключения), через `GlobalExceptionHandlingMiddleware` не проходят — но выглядят так же: оба пути пишут ответ через один `IProblemDetailsService`, а заголовки ошибок для всех статус-кодов настроены в одном месте (`CustomizeProblemDetails` в `AddPresentationServices`). Это единственное место, где домен встречается с протоколом.
 
 Composition root находится в `Program.cs` — он читает конфигурацию и собирает граф зависимостей через extension-методы слоёв:
 
 ```csharp
-builder.Services.AddInfrastructureServices(connectionString);
-builder.Services.AddApplicationServices();
-builder.Services.AddPresentationServices();
+builder.Services.AddInfrastructureServices(connectionString, builder.Configuration);
+builder.Services.AddApplicationServices(builder.Configuration);
+builder.Services.AddPresentationServices(builder.Configuration);
 ```
 
 Каждый слой сам знает, что регистрировать, поэтому `Program.cs` остаётся компактным и читается как оглавление приложения.
@@ -119,12 +130,12 @@ builder.Services.AddPresentationServices();
 - [x]  Фоновый процессор заявок на базе `BackgroundService` с обработкой отмены (`CancellationToken`)
 - [x]  Валидация бронирований на уровне сервиса (проверка существования и удаления событий)
 - [x] Переход к **Rich Domain Model**: инкапсуляция логики резервирования и возврата мест внутри сущности `Event`
-- [x] Синхронизация критических секций: защита от овербукинга с помощью `SemaphoreSlim` при конкурентном создании брони
-- [x] Параллельная обработка фоновых задач: использование `Task.WhenAll` и `SemaphoreSlim` для потокобезопасного конкурентного обновления хранилища
+- [x] Синхронизация критических секций: защита от овербукинга с помощью `KeyedAsyncLock` (per-event async-лок на `SemaphoreSlim` внутри) при конкурентном создании и отмене брони
+- [x] Параллельная обработка фоновых задач: `BookingProcessingBackgroundService` обрабатывает `Pending`-брони параллельно через `Task.WhenAll`, каждая — в своём scope и со своим `AppDbContext`, без общего изменяемого состояния
 - [x] Тестирование конкурентности: написаны юнит-тесты, симулирующие одновременные параллельные запросы к сервису для проверки потокобезопасности
 - [x] Хранение данных в PostgreSQL
 - [x] Работа с базой данных через Entity Framework Core
-- [x] `AppDbContext` с `DbSet<Event>` и `DbSet<Booking>`
+- [x] `AppDbContext` с `DbSet<Event>`, `DbSet<Booking>` и `DbSet<User>`
 - [x] Fluent API-маппинг сущностей через `IEntityTypeConfiguration<T>`
 - [x] Адаптация фонового сервиса для работы со scoped-зависимостями через `IServiceScopeFactory`
 - [x] Юнит-тесты сервисов изолированы от инфраструктуры: порты подменяются моками (Moq)
@@ -132,7 +143,7 @@ builder.Services.AddPresentationServices();
 - [x] Автоматическое применение миграций при запуске приложения
 - [x] Начальная миграция `InitialCreate` для таблиц `events` и `bookings`
 - [x] Настроена связь `bookings.event_id → events.id` через внешний ключ
-- [x] Реализован репозиторный слой для `Event` и `Booking`
+- [x] Реализован репозиторный слой для `Event`, `Booking` и `User`
 - [x] Сервисы используют репозитории через DI и не обращаются к `AppDbContext` напрямую
 - [x] Интеграционные тесты репозиториев на реальной PostgreSQL через Testcontainers
 - [x] Интеграционные тесты применения миграций и проверки структуры БД
@@ -146,6 +157,23 @@ builder.Services.AddPresentationServices();
 - [x] Применение миграций инкапсулировано в Infrastructure (`ApplyMigrations`)
 - [x] Тестовые проекты ссылаются на конкретные слои, а не на монолитный веб-проект
 - [x] Интеграционные тесты сквозного сценария бронирования и фоновой обработки на реальной PostgreSQL
+- [x] Сущность `User` (логин, хеш пароля, роль) создаётся через фабричный метод `Create`
+- [x] Перечисление ролей `UserRole` (`User`, `Admin`)
+- [x] Бронирование связано с пользователем через `UserId`; миграция добавляет таблицу `users` и колонку с внешним ключом в `bookings`
+- [x] Доменное правило: запрет бронирования уже начавшегося события (`EventAlreadyStartedException`)
+- [x] Доменное правило: лимит активных броней на пользователя (`BookingLimitExceededException`)
+- [x] Доменное правило: отмена брони с проверкой владельца — свою бронь отменяет любой пользователь, чужую только Admin (`ForbiddenException` при нарушении)
+- [x] Хеширование паролей через BCrypt (`IPasswordHasher`/`PasswordHasher`), с поддержкой верификации legacy-хешей SHA-256
+- [x] Генерация JWT-токена по данным пользователя (`IJwtTokenGenerator`/`JwtTokenGenerator`), параметры вынесены в конфигурацию (`appsettings.json` + секреты — см. [настройку JWT](#настройка-jwt-аутентификации-и-подключения-к-postgresql))
+- [x] Регистрация (`POST /auth/register`) и вход (`POST /auth/login`) с выдачей JWT
+- [x] JWT-аутентификация в Web API (`AddJwtBearer`) и авторизация по ролям (`[Authorize(Roles = "Admin")]`)
+- [x] Идентификатор текущего пользователя читается из claims токена и передаётся в сценарии бронирования и отмены
+- [x] Управление событиями (`POST`/`PUT`/`DELETE /events`) доступно только роли Admin
+- [x] `DELETE /bookings/{id}` — отмена брони: владелец отменяет свою, администратор — любую
+- [x] При неверных учётных данных на входе возвращается одно и то же сообщение (защита от перебора логинов)
+- [x] Swagger настроен для работы с JWT (кнопка Authorize)
+- [x] Единый формат Problem Details для доменных исключений и встроенных ответов 401/403 (`CustomizeProblemDetails`)
+- [x] Юнит-тесты новых доменных правил: бронирование прошедшего события, лимит активных броней, независимость лимитов разных пользователей
 ---
 
 ## 🛠 Технологический стек
@@ -156,6 +184,9 @@ builder.Services.AddPresentationServices();
 - **Database**: PostgreSQL
 - **ORM**: Entity Framework Core
 - **EF Provider**: Npgsql.EntityFrameworkCore.PostgreSQL
+- **Authentication**: JWT Bearer (Microsoft.AspNetCore.Authentication.JwtBearer)
+- **Token generation**: System.IdentityModel.Tokens.Jwt
+- **Password hashing**: BCrypt (BCrypt.Net-Next), с верификацией legacy-хешей SHA-256 (System.Security.Cryptography)
 - **Mocking**: Moq (подмена портов в юнит-тестах)
 - **Integration Tests Database**: PostgreSQL через Testcontainers
 - **Containers**: Testcontainers.PostgreSql
@@ -191,6 +222,8 @@ builder.Services.AddPresentationServices();
 - Microsoft.EntityFrameworkCore
 - Microsoft.EntityFrameworkCore.Relational
 - Npgsql.EntityFrameworkCore.PostgreSQL
+- System.IdentityModel.Tokens.Jwt
+- Microsoft.Extensions.Options.ConfigurationExtensions
 ```
 
 `TicketFlow.Presentation`:
@@ -199,6 +232,7 @@ builder.Services.AddPresentationServices();
 - Swashbuckle.AspNetCore
 - Microsoft.AspNetCore.OpenApi
 - Microsoft.EntityFrameworkCore.Design
+- Microsoft.AspNetCore.Authentication.JwtBearer
 ```
 
 `Microsoft.EntityFrameworkCore.Design` остаётся в Presentation-проекте, потому что инструменты `dotnet ef` требуют его в startup-проекте.
@@ -218,6 +252,7 @@ builder.Services.AddPresentationServices();
 ```bash
 - Microsoft.EntityFrameworkCore
 - Microsoft.EntityFrameworkCore.Relational
+- Microsoft.Extensions.Configuration
 - Npgsql.EntityFrameworkCore.PostgreSQL
 - Testcontainers.PostgreSql
 - Microsoft.NET.Test.Sdk
@@ -225,18 +260,42 @@ builder.Services.AddPresentationServices();
 - xunit.runner.visualstudio
 ```
 
-### Настройка подключения к PostgreSQL
+`Microsoft.Extensions.Configuration` нужен тестовому окружению (`PostgreSqlTestFixture`), чтобы собрать in-memory конфигурацию с параметрами `Jwt` — `AddInfrastructureServices` требует `IConfiguration`, а у тестового проекта нет своего `appsettings.json`.
 
-Приложение читает строку подключения по ключу DefaultConnection и регистрирует AppDbContext через PostgreSQL-провайдер.
-Строка подключения задаётся в `TicketFlow.Presentation/appsettings.json`:
+### Настройка JWT-аутентификации и подключения к PostgreSQL
+
+`Jwt:Secret` и `ConnectionStrings:DefaultConnection` (с паролем БД) — секреты и **не хранятся** в `TicketFlow.Presentation/appsettings.json`. Этот файл содержит только несекретные параметры:
 
 ```json
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres"
+  "Jwt": {
+    "Issuer": "TicketFlow",
+    "Audience": "TicketFlowClient",
+    "ExpirationMinutes": 60
   }
 }
 ```
+
+- `Secret` — ключ подписи HMAC-SHA256, должен быть не короче 256 бит (32 байта / 64 hex-символа), иначе подпись слабая. Генерируется командой `openssl rand -hex 32`.
+- `Issuer` / `Audience` — сверяются при валидации токена (`ValidateIssuer`, `ValidateAudience` в `AddJwtBearer`).
+- `ExpirationMinutes` — время жизни токена в минутах.
+
+**Локальная разработка.** Значения для локального docker-postgres лежат в `TicketFlow.Presentation/appsettings.Development.json` (загружается автоматически при `ASPNETCORE_ENVIRONMENT=Development`, как в `launchSettings.json`). Это dev-only секрет, актуальный только для контейнера из `docker-compose.yml`, поэтому хранить его в репозитории допустимо. При желании его можно вынести из файла в `dotnet user-secrets` (проект уже помечен `UserSecretsId`):
+
+```bash
+dotnet user-secrets set "Jwt:Secret" "<значение>" --project TicketFlow.Presentation
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<значение>" --project TicketFlow.Presentation
+```
+
+**Прод и другие окружения.** Секреты задаются переменными окружения — ASP.NET Core автоматически превращает `__` в `:` при биндинге конфигурации:
+
+```bash
+export Jwt__Secret="$(openssl rand -hex 32)"
+export ConnectionStrings__DefaultConnection="Host=...;Port=5432;Database=eventapi;Username=...;Password=..."
+```
+
+Переменные с префиксом `ASPNETCORE_` (например, `ASPNETCORE_Jwt__Secret`) тоже работают — хост-конфигурация ASP.NET Core сама снимает этот префикс на старте. Если ни один из этих источников не задаёт `Jwt:Secret` в окружении, отличном от Development, приложение упадёт при старте (`InvalidOperationException` в `AddAuthenticationServices`) — это осознанный fail-fast, а не баг.
+
 
 ### Установка и запуск
  
@@ -283,6 +342,7 @@ app.Services.ApplyMigrations();
 
 - `events`
 - `bookings`
+- `users`
 - `__EFMigrationsHistory`
 
 Таблица `__EFMigrationsHistory` используется EF Core для хранения истории применённых миграций.
@@ -306,20 +366,59 @@ dotnet ef database update \
 
 В обычном сценарии ручной вызов `database update` не требуется, потому что приложение применяет миграции при запуске.
 
+> ⚠️ Если в базе уже есть данные (например, брони из прошлых спринтов), миграция `AddUsersAndBookingOwnership` не применится — новая колонка `bookings.user_id` обязана ссылаться на существующего пользователя, а таблица `users` на момент миграции пуста. Для локальной разработки проще всего пересоздать базу (`docker compose down -v && docker compose up -d`) и накатить миграции на чистую схему.
+
 ### 📡 API Endpoints
  
 | Метод    | Путь              | Описание                        | Статусы           |
 |----------|-------------------|---------------------------------|-------------------|
+| `POST`   | `/auth/register`  | Зарегистрировать пользователя (всегда роль `User` — см. [ролевую модель](#ролевая-модель)) | 204, 400 |
+| `POST`   | `/auth/login`     | Войти и получить JWT-токен      | 200, 401          |
 | `GET`    | `/events`         | Список событий с фильтрацией и пагинацией | 200 |
 | `GET`    | `/events/{id}`    | Получить событие по ID          | 200, 404          |
-| `POST`   | `/events`         | Создать новое событие           | 201, 400          |
-| `PUT`    | `/events/{id}`    | Обновить событие целиком        | 200, 400, 404     |
-| `DELETE` | `/events/{id}`    | Удалить событие                 | 204, 404          |
-| `POST`   | `/events/{id}/book` | Забронировать билет на мероприятие (Отложенная обработка) | 202, 404, 409          |
-| `GET`    | `/bookings/{id}`    | Получить текущий статус и информацию о бронировании       | 200, 404          |
+| `POST`   | `/events`         | Создать новое событие (только Admin) | 201, 400, 401, 403 |
+| `PUT`    | `/events/{id}`    | Обновить событие целиком (только Admin) | 200, 400, 401, 403, 404 |
+| `DELETE` | `/events/{id}`    | Удалить событие (только Admin)  | 204, 401, 403, 404 |
+| `POST`   | `/events/{id}/book` | Забронировать билет на мероприятие (Отложенная обработка) | 202, 400, 401, 404, 409 |
+| `GET`    | `/bookings/{id}`    | Получить текущий статус и информацию о бронировании: свою — любой пользователь, чужую — только Admin | 200, 401, 403, 404 |
+| `DELETE` | `/bookings/{id}`    | Отменить бронь: свою — любой пользователь, чужую — только Admin | 204, 401, 403, 404 |
  
  Параметры запроса (Query): `title` (строка), `from` (дата), `to` (дата), `page` (int), `pageSize` (int).
- 
+
+`/auth/register` и `/auth/login` доступны без токена. Остальные эндпоинты требуют заголовок `Authorization: Bearer <token>`.
+
+### Пример запроса (POST /auth/register)
+
+```json
+{
+  "login": "john",
+  "password": "P@ssw0rd123"
+}
+```
+
+`RegisterUserDto` не содержит поля `role` — эндпоинт всегда создаёт пользователя с ролью `User`, тело запроса не может повлиять на роль (лишние поля в JSON, включая `"role"`, игнорируются биндером). Это осознанное ограничение: без него любой клиент мог бы зарегистрироваться сразу как `Admin`. Успешная регистрация возвращает `204 No Content`. Как завести администратора — см. [ролевую модель](#ролевая-модель).
+
+Пароль (`RegisterUserDto`/`LoginUserDto`) валидируется атрибутом `[StringLength(64, MinimumLength = 8)]` — от 8 до 64 символов, иначе `400 Bad Request` ещё на уровне модели, до вызова сервиса.
+
+### Пример запроса (POST /auth/login)
+
+```json
+{
+  "login": "admin",
+  "password": "admin123"
+}
+```
+
+### Пример ответа (200 OK)
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYi..."
+}
+```
+
+Полученный токен нужно вставить в Swagger UI через кнопку **Authorize** в правом верхнем углу — достаточно вставить сам токен без слова `Bearer`, Swagger добавит его сам. После этого будут доступны защищённые эндпоинты, а роль из токена определит, какие операции разрешены (`[Authorize]` против `[Authorize(Roles = "Admin")]`).
+
 ### Пример запроса (POST /events)
  
 ```json
@@ -382,12 +481,49 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 
 ---
 
+## 🔐 Аутентификация и авторизация
+
+### Ролевая модель
+
+В системе две роли — `User` и `Admin`, хранятся в `UserRole` и в поле `role` таблицы `users`:
+
+| Роль | Права |
+|---|---|
+| `User` | Бронирует события (`POST /events/{id}/book`), просматривает и отменяет **только свои** брони (`GET`/`DELETE /bookings/{id}`) |
+| `Admin` | Всё то же, что и `User`, плюс управление событиями (`POST`/`PUT`/`DELETE /events`) и отмена **любых** броней, включая чужие |
+
+`POST /auth/register` всегда создаёт пользователя с ролью `User` — `RegisterUserDto` не принимает роль от клиента, так что зарегистрироваться сразу как `Admin` невозможно. Роль попадает в JWT-токен как claim при логине. Проверка роли на контроллерах — декларативная, через `[Authorize(Roles = "Admin")]` для управления событиями; для отмены чужой брони роль проверяется в `BookingService.CancelBookingAsync` (владелец либо `Admin`, иначе `ForbiddenException` → 403).
+
+**Создание администратора.** Единственный способ завести `Admin` — служебная команда, а не HTTP API:
+
+```bash
+dotnet run --project TicketFlow.Presentation -- create-admin <login> <password>
+```
+
+Команда переиспользует тот же `IUserRepository`/`IPasswordHasher`, что и обычная регистрация, применяет миграции при необходимости и завершает процесс, не поднимая веб-хост. Требует прямого доступа к окружению (сервер/CI) — эндпоинта для этого в API нет.
+
+### Получение и использование JWT-токена в Swagger
+
+1. Откройте Swagger UI (`https://localhost:7241/swagger`).
+2. Выполните `POST /auth/register` — создайте пользователя (роль всегда `User`; для тестирования прав администратора заведите его через `dotnet run -- create-admin <login> <password>`, см. [ролевую модель](#ролевая-модель)).
+3. Выполните `POST /auth/login` с теми же логином и паролем — в ответе придёт `token`.
+4. Нажмите кнопку **Authorize** вверху страницы, вставьте значение `token` в поле (без слова `Bearer` — Swagger подставит его сам) и нажмите **Authorize**, затем **Close**.
+5. Все последующие запросы из Swagger UI будут уходить с заголовком `Authorization: Bearer <token>`. Эндпоинты, недоступные текущей роли, вернут `403 Forbidden`; запрос без токена — `401 Unauthorized`.
+
+### Хранение паролей и токена
+
+Пароль никогда не хранится в открытом виде — `PasswordHasher` хеширует его BCrypt (`workFactor: 12`, соль встроена в хеш) и сохраняет результат в `users.password_hash`; верификация также принимает legacy-хеши SHA-256 (созданные до перехода на BCrypt) для обратной совместимости. Токен подписывается `HmacSha256` на секрете из `Jwt:Secret` (см. [настройку JWT](#настройка-jwt-аутентификации-и-подключения-к-postgresql)) и несёт claims `nameid` (Id пользователя, `ClaimTypes.NameIdentifier`), `unique_name` (логин, `ClaimTypes.Name`), `role` (`ClaimTypes.Role`) и `jti` (уникальный идентификатор токена).
+
+При неверном логине или пароле `POST /auth/login` возвращает одинаковое сообщение независимо от причины — это защита от перебора существующих логинов. Дополнительно от timing-атаки (когда факт существования логина вычисляется по времени ответа): если логин не найден, `UserService.LoginAsync` всё равно выполняет `IPasswordHasher.Verify` против фиктивного bcrypt-хеша — время ответа не выдаёт, существует аккаунт или нет.
+
+---
+
 ## ⚠️ Обработка ошибок
 
-Все ошибки в приложении обрабатываются централизованно. В случае исключения API возвращает ответ в формате Problem Details.
+Все ошибки в приложении обрабатываются централизованно и возвращаются в формате Problem Details — как доменные исключения через `GlobalExceptionHandlingMiddleware`, так и встроенные ответы аутентификации/авторизации ASP.NET Core (401/403), поскольку оба пути используют один `IProblemDetailsService` с общей настройкой заголовков.
 
 Пример ответа при ошибке (404 Not Found):
-```
+```json
 {
   "status": 404,
   "title": "Not found",
@@ -395,11 +531,28 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 }
 ```
 
+Пример ответа при отсутствии прав (403 Forbidden) — попытка отменить чужую бронь без роли Admin:
+```json
+{
+  "status": 403,
+  "title": "Forbidden",
+  "detail": "You can not cancel other user booking."
+}
+```
+
+Пример ответа без токена (401 Unauthorized):
+```json
+{
+  "status": 401,
+  "title": "Unauthorized"
+}
+```
+
 ---
 
 ## 🧪 Тестирование
 
-В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. Тестовые проекты ссылаются напрямую на слои, а не на веб-проект: `TicketFlow.Tests` — на `Domain` и `Application`, `TicketFlow.IntegrationTests` — дополнительно на `Infrastructure`.
+В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. `TicketFlow.Tests` ссылается на `Domain`, `Application` и `Infrastructure` (последнее — точечно, для прямого тестирования конкретных реализаций без DI, см. ниже); `TicketFlow.IntegrationTests` — дополнительно на `Presentation`, чтобы поднимать реальный HTTP-пайплайн через `WebApplicationFactory`.
 
 Для запуска всех тестов:
 ```bash
@@ -417,9 +570,9 @@ dotnet test ./TicketFlow.IntegrationTests/TicketFlow.IntegrationTests.csproj
 
 Проект `TicketFlow.Tests` проверяет бизнес-логику доменных моделей, сервисов и фоновой обработки.
 
-Юнит-тесты не зависят от инфраструктуры: проект ссылается только на `Domain` и `Application`, а порты `IEventRepository` и `IBookingRepository` подменяются моками через Moq. Состояние хранится в памяти теста, база данных не используется вообще.
+Сервисные тесты не зависят от базы данных: порты `IEventRepository` и `IBookingRepository` подменяются моками через Moq, состояние хранится в памяти теста. Проект также ссылается на `Infrastructure`, чтобы напрямую тестировать конкретные реализации без портов — `PasswordHasher` (BCrypt) и `JwtTokenGenerator`.
 
-Общее окружение собирается в `TestEnvironment`: он настраивает моки портов, регистрирует их синглтонами и вызывает `AddApplicationServices()`, поэтому тесты работают с теми же сервисами, что и приложение:
+Общее окружение для сервисных тестов собирается в `TestEnvironment`: он настраивает моки портов, регистрирует их синглтонами и вызывает `AddApplicationServices(configuration)` (с пустой `IConfiguration` — секция `Booking` не задана, действует значение по умолчанию), поэтому тесты работают с теми же сервисами, что и приложение:
 
 ```csharp
 using var env = TestHelpers.Create();
@@ -433,26 +586,33 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Основные наборы unit-тестов:
 
 - `EventServiceTests` — проверка бизнес-логики управления событиями: создание, обновление, удаление, получение по ID, фильтрация, пагинация и валидация дат.
-- `BookingServiceTests` — проверка сценариев бронирования, включая создание заявки, проверку отсутствующих событий, sold out-сценарии и защиту от овербукинга.
+- `BookingServiceTests` — проверка сценариев бронирования: создание заявки, проверку отсутствующих событий, sold out-сценарии, защиту от овербукинга под конкурентной нагрузкой как на одном событии, так и на нескольких разных событиях одновременно (проверка, что `KeyedAsyncLock` не блокирует чужие события), доменные правила — запрет брони уже начавшегося события, лимит активных броней и его независимость между пользователями (`CreateBookingAsync_Should*`), а также отмену брони — успешную, с проверкой что `AvailableSeats` события возвращается (владелец, до начала события), `ForbiddenException` для чужой брони, `EventAlreadyStartedException` при отмене после начала события (`CancelBookingAsync_Should*`) и `ForbiddenException` при просмотре чужой брони не-владельцем (`GetBookingByIdAsync_Should*`).
+- `KeyedAsyncLockTests` — изолированные тесты самого лока: сериализация конкурентных вызовов на одном ключе, отсутствие блокировки между разными ключами, удаление записи из внутреннего словаря после последнего `DisposeAsync()` (проверка отсутствия утечки памяти).
+- `UserServiceTests` — `RegisterAsync`: дубликат логина → `ValidationException`, роль всегда создаётся как `User` независимо от входных данных; `LoginAsync`: несуществующий логин и неверный пароль → `UnauthorizedException` с одинаковым сообщением, валидные данные → токен; несуществующий логин всё равно вызывает `IPasswordHasher.Verify` (с фиктивным хешем) — защита от timing-атаки на перебор логинов.
+- `PasswordHasherTests` — формат хеша (BCrypt), разная соль на одинаковый пароль, верификация правильного/неправильного пароля для нового формата и для legacy SHA-256 (обратная совместимость).
+- `JwtTokenGeneratorTests` — состав claims токена (`nameid`/`unique_name`/`role`/`jti`), issuer/audience, уникальность `jti`, успешная и неуспешная (чужой секрет) валидация через `JwtSecurityTokenHandler`.
 - `BookingProcessingBackgroundServiceTests` — проверка фоновой обработки заявок: перевод Pending в Confirmed или Rejected, заполнение ProcessedAt, обработка отмены через CancellationToken.
 - `EventTests` и `BookingTests` — изолированные тесты доменных моделей.
 
 ### Интеграционные тесты
 
-Проект `TicketFlow.IntegrationTests` проверяет слой доступа к данным на реальной PostgreSQL через `Testcontainers.PostgreSql`.
+Проект `TicketFlow.IntegrationTests` проверяет и слой доступа к данным на реальной PostgreSQL через `Testcontainers.PostgreSql`, и реальный HTTP-пайплайн через `WebApplicationFactory` (routing, `[Authorize]`, JwtBearer, `GlobalExceptionHandlingMiddleware`) поверх того же контейнера.
 Интеграционные тесты:
 1. Автоматически поднимают PostgreSQL-контейнер.
 2. Сбрасывают тестовую базу перед тестами.
 3. Применяют EF Core-миграции через `Database.MigrateAsync()`.
-4. Проверяют создание таблиц `events`, `bookings` и `__EFMigrationsHistory`.
+4. Проверяют создание таблиц `events`, `bookings`, `users` и `__EFMigrationsHistory`.
 5. Проверяют внешний ключ `bookings.event_id → events.id`.
-6. Покрывают методы `EventRepository`.
-7. Покрывают методы `BookingRepository`.
-8. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
-9. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
-10. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+6. Проверяют backfill в миграции `AddUsersAndBookingOwnership`: `MigrationTests` откатывает БД до `InitialCreate`, вставляет "legacy"-бронь без `user_id`, применяет миграцию заново и проверяет, что `bookings.user_id` заполнился sentinel-пользователем `legacy-system`.
+7. Покрывают методы `EventRepository`.
+8. Покрывают методы `BookingRepository`, в том числе с реальным `bookings.user_id → users.id` (брони в тестах создаются только для существующего пользователя — колонка обязательна и защищена внешним ключом).
+9. Покрывают методы `UserRepository` (`UserRepositoryTests`): успешное добавление, `GetByLoginAsync` для существующего/несуществующего логина, нарушение уникального индекса логина — `DbUpdateException` с `PostgresException.SqlState == "23505"`.
+10. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
+11. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
+12. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+13. Покрывают HTTP-уровень (`AuthorizationHttpTests`, через `CustomWebApplicationFactory`): запрос без токена на `[Authorize]`-маршрут → 401; `POST /events` от роли `User` → 403; неверный пароль на `/auth/login` → 401; отмена чужой брони → 403; попытка передать `"role": "Admin"` сырым JSON в `/auth/register` игнорируется (роль всё равно `User`).
 
-Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString)` и `AddApplicationServices()`, то есть повторяет composition root приложения.
+Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString, configuration)` и `AddApplicationServices(configuration)`, то есть повторяет composition root приложения. Поскольку у тестового проекта нет `appsettings.json`, `configuration` собирается в памяти (`ConfigurationBuilder().AddInMemoryCollection(...)`) с тестовыми значениями секции `Jwt`. HTTP-тесты используют отдельный `CustomWebApplicationFactory`: запускают приложение в окружении `Development` (чтобы `Jwt:Secret` подхватился из `appsettings.Development.json` ещё до применения тестовых оверрайдов конфигурации) и подменяют только `DbContextOptions<AppDbContext>` на тот же Testcontainers-контейнер.
 
 ### Как писать новые тесты
 
@@ -460,7 +620,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 | Что проверяем | Куда писать |
 |---|---|
-| Бизнес-правило сущности (`TryReserveSeats`, `Confirm`) | `TicketFlow.Tests/Models/` |
+| Бизнес-правило сущности (`TryReserveSeats`, `Confirm`, `Cancel`) | `TicketFlow.Tests/Models/` |
 | Логика use case: валидация, выброс доменных исключений, маппинг в DTO | `TicketFlow.Tests` |
 | Взаимодействие с портом (сколько раз вызван `SaveChangesAsync`) | `TicketFlow.Tests`, через `Verify` |
 | Трансляция LINQ в SQL: фильтры, сортировка, пагинация | `TicketFlow.IntegrationTests` |
@@ -473,7 +633,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 Чего в юнит-тестах делать не стоит:
 
-- добавлять в `TicketFlow.Tests` ссылку на `Infrastructure` — тогда тест перестанет быть юнит-тестом, а моки портов потеряют смысл;
+- использовать ссылку `TicketFlow.Tests` → `Infrastructure` для тестирования сервисов через мок-порты — тогда тест перестанет быть юнит-тестом, а моки портов потеряют смысл. Ссылка существует только для прямого тестирования конкретных реализаций без DI и без портов (`PasswordHasherTests`, `JwtTokenGeneratorTests`) — у этих классов нет интерфейса, который можно было бы замокать вместо них, они и есть тестируемая единица;
 - проверять поведение хранилища. Логика фильтрации в моке `GetPagedAsync` повторяет `EventRepository` лишь приблизительно и не заменяет SQL — новые правила выборки проверяются интеграционным тестом;
 - полагаться на то, что `SaveChangesAsync` что-то меняет: в моках это пустышка, объекты в списках и так изменяются по ссылке.
 
@@ -483,6 +643,8 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 Даты в тестах — только UTC (`DateTime.UtcNow`): колонки имеют тип `timestamp with time zone`, и Npgsql отвергнет значение с `Kind = Unspecified`.
 
+Брони в интеграционных тестах создаются только для реально сохранённого пользователя (`user_id` защищён внешним ключом) — вспомогательный метод `StoreUser`/`StoreUser(context)` есть в каждом тестовом классе, который создаёт `Booking`.
+
 **Про время выполнения.** Юнит-тесты не обращаются ни к базе, ни к диску. Интеграционные поднимают Docker-контейнер и пересоздают схему на каждый тест, а тест фоновой обработки дополнительно ждёт цикл воркера — это самая медленная часть набора. Поэтому в интеграционный проект стоит выносить только то, что действительно требует настоящей базы.
 
 ---
@@ -491,19 +653,22 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 Доступ к базе данных инкапсулирован в репозиториях, разнесённых по двум слоям:
 
-- интерфейсы портов — `IEventRepository`, `IBookingRepository` — объявлены в `TicketFlow.Application/Abstractions/`;
-- реализации-адаптеры — `EventRepository`, `BookingRepository` — находятся в `TicketFlow.Infrastructure/Repositories/` и работают через `AppDbContext`.
+- интерфейсы портов — `IEventRepository`, `IBookingRepository`, `IUserRepository` — объявлены в `TicketFlow.Application/Abstractions/`;
+- реализации-адаптеры — `EventRepository`, `BookingRepository`, `UserRepository` — находятся в `TicketFlow.Infrastructure/Repositories/` и работают через `AppDbContext`.
 
 Сервисы не обращаются к `AppDbContext` напрямую и не знают о конкретных реализациях — они получают интерфейсы через DI, а связывание происходит в composition root.
 
 Репозитории отвечают только за доступ к данным:
 
-- поиск сущностей по ID;
+- поиск сущностей по ID (и по логину — для `User`);
 - добавление сущностей;
 - удаление сущностей;
 - выборку списка событий с фильтрацией и пагинацией;
 - выборку pending-бронирований;
+- подсчёт активных броней пользователя (`CountActiveBookingsByUserAsync` — для проверки лимита);
 - сохранение изменений через `SaveChangesAsync()`.
+
+Уникальность логина обеспечена индексом `IX_users_login` (`UserConfiguration`), а связь `bookings.user_id → users.id` — внешним ключом с `DeleteBehavior.Restrict` (удаление пользователя с активными бронями запрещено на уровне схемы).
 
 Бизнес-логика остаётся в сервисах и доменных моделях.
 
@@ -518,16 +683,41 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 * `TotalSeats` (`int`) — общее (максимальное) количество мест на мероприятии. Задается при создании и должно быть больше нуля.
 * `AvailableSeats` (`int`) — текущее количество свободных мест. Уменьшается при успешном создании заявки и восстанавливается, если фоновый сервис отклоняет бронь.
 
+### 👤 Модель данных пользователя (User)
+Сущность `User` хранит учётные данные и роль, создаётся через фабричный метод `Create`, а не публичный конструктор:
+* `Id` (`Guid`) — уникальный идентификатор пользователя.
+* `Login` (`string`) — логин, уникален в пределах системы (уникальный индекс в БД).
+* `PasswordHash` (`string`) — хеш пароля (BCrypt), пароль в открытом виде нигде не хранится.
+* `Role` (`UserRole`) — роль пользователя: `User` или `Admin`.
+
 ### 📦 Модель данных бронирования (Booking)
 Сущность `Booking` описывает заявку на бронирование места на конкретное мероприятие и содержит поля:
 * `Id` (`Guid`) — уникальный идентификатор брони.
 * `EventId` (`Guid`) — идентификатор связанного события.
+* `UserId` (`Guid`) — идентификатор пользователя, создавшего бронь.
 * `Status` (`BookingStatus`) — текущее состояние заявки. Принимает значения:
   * `Pending` — бронь создана и ожидает обработки фоновым сервисом.
   * `Confirmed` — бронирование успешно подтверждено.
   * `Rejected` — бронирование отклонено.
+  * `Cancelled` — бронь отменена пользователем или администратором.
 * `CreatedAt` (`DateTime`) — дата и время инициализации бронирования.
-* `ProcessedAt` (`DateTime?`) — дата и время обработки заявки внешней системой (заполняется фоновым сервисом).
+* `ProcessedAt` (`DateTime?`) — дата и время обработки заявки внешней системой или отмены (заполняется фоновым сервисом либо методом `Cancel()`).
+
+### 📏 Доменные правила бронирования
+
+При создании брони (`BookingService.CreateBookingAsync`) сервис последовательно проверяет:
+
+1. Событие существует (иначе `NotFoundException` → 404).
+2. Событие ещё не началось: `event.StartAt` должен быть в будущем (иначе `EventAlreadyStartedException` → 400).
+3. У пользователя не превышен лимит активных броней — по умолчанию **10** одновременных броней в статусе `Pending`/`Confirmed` (иначе `BookingLimitExceededException` → 409, с указанием значения лимита в сообщении). Лимит задаётся конфигурацией `Booking:MaxActiveBookingsPerUser` (`appsettings.json`, секция `Booking`; биндится в `BookingSettings` через `IOptions`), 10 — значение по умолчанию, если секция не задана.
+4. У события есть свободные места (иначе `NoAvailableSeatsException` → 409).
+
+При отмене брони (`BookingService.CancelBookingAsync`, `DELETE /bookings/{id}`):
+
+1. Бронь должна существовать (иначе `NotFoundException` → 404).
+2. Отменить бронь может либо её владелец, либо пользователь с ролью `Admin` — иначе `ForbiddenException` → 403.
+3. Событие ещё не началось: `event.StartAt` должен быть в будущем (иначе `EventAlreadyStartedException` → 400) — отмена после начала события запрещена, даже владельцу или Admin.
+4. Повторная отмена уже `Cancelled`/`Rejected` брони запрещена доменной моделью (`Booking.Cancel()` бросает `InvalidOperationDomainException` → 400).
 
 ### ⚙️ Логика фоновой обработки (Background Processing)
 Для реализации паттерна «быстрый ответ + отложенная обработка» запущен фоновый хостинг-сервис `BookingProcessingBackgroundService`:
@@ -542,31 +732,40 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 ## 🔒 Потокобезопасность и многопоточность
 
-Для защиты от овербукинга при конкурентном создании бронирований используется `static SemaphoreSlim` в `BookingService`.
+Для защиты от овербукинга при конкурентном создании и отмене бронирований используется `KeyedAsyncLock` (`Application/Concurrency/KeyedAsyncLock.cs`) — per-key асинхронный мьютекс, лочит по `eventId`, а не глобально.
 
-`BookingService` зарегистрирован как scoped-сервис, поэтому обычный instance-семафор защищал бы только один экземпляр сервиса. `static SemaphoreSlim` синхронизирует критическую секцию между разными экземплярами `BookingService` внутри одного процесса приложения.
+`BookingService` зарегистрирован как scoped-сервис, поэтому обычный instance-семафор защищал бы только один экземпляр сервиса. `KeyedAsyncLock` зарегистрирован как **singleton** (`AddApplicationServices`) и внедряется в `BookingService` через конструктор — так лок остаётся общим для всех scoped-экземпляров сервиса внутри одного процесса приложения.
 
-Критическая секция включает:
+В отличие от прежнего `static SemaphoreSlim` (единая очередь на всё приложение сразу), `KeyedAsyncLock` синхронизирует только запросы к одному и тому же событию: `AcquireAsync(eventId)` возвращает `IAsyncDisposable`-хендл на конкретный ключ, а конкурентные брони на разные события выполняются параллельно, не блокируя друг друга. Реализация — `ConcurrentDictionary<Guid, Entry>` со счётчиком ссылок на каждый ключ: как только по ключу не осталось ни держателей, ни ожидающих, запись удаляется из словаря — лок не течёт по памяти при большом количестве разных событий.
+
+Критическая секция при создании брони (`CreateBookingAsync`, лочится по `eventId` из параметра) включает:
 
 1. загрузку события из базы данных;
-2. проверку доступных мест через `TryReserveSeats()`;
-3. уменьшение `AvailableSeats`;
-4. создание новой брони;
-5. сохранение изменений через `SaveChangesAsync()`.
+2. проверку, что событие ещё не началось;
+3. подсчёт активных броней пользователя и проверку лимита;
+4. проверку доступных мест через `TryReserveSeats()`;
+5. уменьшение `AvailableSeats`;
+6. создание новой брони;
+7. сохранение изменений через `SaveChangesAsync()`.
 
 Так как `AppDbContext` отслеживает и изменённое событие, и новую бронь, один вызов `SaveChangesAsync()` сохраняет оба изменения.
+
+При отмене брони (`CancelBookingAsync`, лочится по `booking.EventId`) тот же лок берётся вокруг проверки события, `booking.Cancel()`, `eventItem.ReleaseSeats()` и `SaveChangesAsync()` — это не даёт конкурентным создании/отмене брони на одном и том же событии гоняться за `AvailableSeats`.
 
 `BookingProcessingBackgroundService` не хранит общий `DbContext` и не использует общий in-memory store. Для работы со scoped-зависимостями он использует `IServiceScopeFactory`: сначала создаёт scope для получения списка `Pending`-бронирований через `IBookingRepository`, затем отдельный scope для обработки каждой брони через `IBookingRepository` и `IEventRepository`.
 
 
 ### 🔄 Пример сквозного сценария использования
 
+**Шаг 0: Аутентификация**
+Клиент регистрируется и получает JWT-токен (см. [«Получение и использование JWT-токена в Swagger»](#получение-и-использование-jwt-токена-в-swagger)), затем передаёт его в заголовке `Authorization: Bearer <token>` во всех последующих запросах.
+
 **Шаг 1: Создание бронирования**
 Клиент отправляет запрос на бронирование места на существующее событие:
 `POST /events/27fffa2f-fe74-42ea-8baa-4e7efa57e541/book`
 
 **Сценарий А: Места есть (202 Accepted)**
-Сервис мгновенно выполняет проверку мест, резервирует одно место и возвращает статус `202 Accepted`.
+Сервис мгновенно выполняет проверку — событие ещё не началось, лимит броней не превышен, есть свободные места — резервирует одно место и возвращает статус `202 Accepted`.
 В заголовках ответа (`Headers`) передается ссылка на проверку статуса, а в теле — объект со статусом `Pending`:
 * **Заголовок Location:** `https://localhost:7241/bookings/14770068-9649-4b33-816c-9481019d2611` 
 * **Тело ответа:**
@@ -613,6 +812,12 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 }
 ```
 
+**Шаг 4: Отмена брони**
+Владелец брони (или администратор) может отменить её в любой момент до наступления события:
+`DELETE /bookings/14770068-9649-4b33-816c-9481019d2611` → `204 No Content`.
+
+Если то же самое попробует другой пользователь без роли Admin — ответ `403 Forbidden`. Повторная отмена уже отменённой или отклонённой брони — `400 Bad Request`.
+
 ---
 
 ### 💥 Сценарий защиты от овербукинга (Concurrency Scenario)
@@ -620,7 +825,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Представим ситуацию:
 1. На мероприятие осталось ровно **5 мест**.
 2. **20 пользователей** одновременно нажимают кнопку «Забронировать».
-3. Благодаря использованию конструкции `SemaphoreSlim` в `BookingService`, запросы выстраиваются в строгую очередь на уровне процессорных потоков.
+3. Благодаря `KeyedAsyncLock` в `BookingService` запросы на это событие выстраиваются в строгую очередь (запросы на другие события при этом не блокируются и обрабатываются параллельно).
 4. Первые **5 потоков** (если доступно 5 мест) успешно вызывают `TryReserveSeats()`, уменьшают счетчик до 0 и получают ответ `202 Accepted`. Их брони уходят в статус `Pending`.
 5. Остальные **15 запросов** мгновенно получают отказ на уровне бизнес-логики модели, и API возвращает им `409 Conflict`.
 6. Фоновый сервис параллельно переводит эти 5 успешных броней в статус `Confirmed`, создавая отдельный scope и отдельный `AppDbContext` для обработки каждой брони.
@@ -637,4 +842,3 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Автор: Александр Куров [@itsanti](https://github.com/itsanti)
 
 Курс: [Продвинутая разработка на C# и .NET ](https://practicum.yandex.ru/middle-csharp) (Яндекс Практикум)
-

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using TicketFlow.Application.Abstractions;
@@ -30,7 +31,7 @@ namespace TicketFlow.Tests
             services.AddSingleton(EventRepository.Object);
             services.AddSingleton(BookingRepository.Object);
 
-            services.AddApplicationServices();
+            services.AddApplicationServices(new ConfigurationBuilder().Build());
 
             Provider = services.BuildServiceProvider();
         }
@@ -182,6 +183,17 @@ namespace TicketFlow.Tests
                 });
 
             BookingRepository
+                .Setup(r => r.CountActiveBookingsByUserAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid userId, CancellationToken _) =>
+                {
+                    lock (_sync)
+                    {
+                        return _bookings.Count(b => b.UserId == userId
+                            && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
+                    }
+                });
+
+            BookingRepository
                 .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
         }
@@ -196,6 +208,17 @@ namespace TicketFlow.Tests
                 "Описание тестового события",
                 DateTime.UtcNow.AddDays(1),
                 DateTime.UtcNow.AddDays(1).AddHours(2),
+                totalSeats
+            );
+        }
+
+        internal static Event CreateStartedTestEvent(int totalSeats)
+        {
+            return Event.Create(
+                "Уже начавшееся событие",
+                "Описание тестового события",
+                DateTime.UtcNow.AddHours(-2),
+                DateTime.UtcNow.AddHours(2),
                 totalSeats
             );
         }

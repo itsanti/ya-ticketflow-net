@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -42,8 +43,18 @@ namespace TicketFlow.IntegrationTests.Infrastructure
         {
             var services = new ServiceCollection();
 
-            services.AddInfrastructureServices(ConnectionString);
-            services.AddApplicationServices();
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32bytes",
+                    ["Jwt:Issuer"] = "TicketFlow.IntegrationTests",
+                    ["Jwt:Audience"] = "TicketFlow.IntegrationTests",
+                    ["Jwt:ExpirationMinutes"] = "60"
+                })
+                .Build();
+
+            services.AddInfrastructureServices(ConnectionString, configuration);
+            services.AddApplicationServices(configuration);
 
             return services.BuildServiceProvider();
         }

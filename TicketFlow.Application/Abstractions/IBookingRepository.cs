@@ -9,5 +9,6 @@ namespace TicketFlow.Application.Abstractions
         Task AddAsync(Booking booking, CancellationToken ct = default);
         Task<IReadOnlyList<Guid>> GetPendingIdsAsync(CancellationToken ct = default);
         Task SaveChangesAsync(CancellationToken ct = default);
+        Task<int> CountActiveBookingsByUserAsync(Guid userId, CancellationToken ct = default);
     }
 }

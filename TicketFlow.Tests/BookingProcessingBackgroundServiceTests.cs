@@ -42,7 +42,7 @@ namespace TicketFlow.Tests
             using var env = TestHelpers.Create();
 
             var eventItem = TestHelpers.CreateTestEvent(2);
-            var booking = new Booking(eventItem.Id);
+            var booking = new Booking(eventItem.Id, Guid.NewGuid());
 
             env.SeedEvent(eventItem);
             env.SeedBooking(booking);
@@ -64,7 +64,7 @@ namespace TicketFlow.Tests
         {
             using var env = TestHelpers.Create();
 
-            var booking = new Booking(Guid.NewGuid())
+            var booking = new Booking(Guid.NewGuid(), Guid.NewGuid())
             {
                 Status = BookingStatus.Confirmed,
                 ProcessedAt = DateTime.UtcNow.AddMinutes(-10)
@@ -91,7 +91,7 @@ namespace TicketFlow.Tests
             using var env = TestHelpers.Create();
 
             var fakeEventId = Guid.NewGuid();
-            var booking = new Booking(fakeEventId);
+            var booking = new Booking(fakeEventId, Guid.NewGuid());
 
             env.SeedBooking(booking);
 

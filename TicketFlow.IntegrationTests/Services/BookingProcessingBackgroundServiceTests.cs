@@ -34,9 +34,12 @@ namespace TicketFlow.IntegrationTests.Services
                     DateTime.UtcNow.AddDays(2),
                     10);
 
-                booking = new Booking(eventItem.Id);
+                var user = User.Create($"user-{Guid.NewGuid()}", "hash", UserRole.User);
+
+                booking = new Booking(eventItem.Id, user.Id);
 
                 await context.Events.AddAsync(eventItem);
+                await context.Users.AddAsync(user);
                 await context.Bookings.AddAsync(booking);
                 await context.SaveChangesAsync();
             }

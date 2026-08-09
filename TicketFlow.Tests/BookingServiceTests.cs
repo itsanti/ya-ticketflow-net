@@ -19,11 +19,12 @@ namespace TicketFlow.Tests
             var eventItem = TestHelpers.CreateTestEvent(2);
             var eventId = Guid.NewGuid();
             eventItem.Id = eventId;
+            var userId = Guid.NewGuid();
 
             env.SeedEvent(eventItem);
 
             var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
-            var booking = await bookingService.CreateBookingAsync(eventItem.Id);
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
 
             Assert.NotEqual(Guid.Empty, booking.Id);
             Assert.Equal(eventId, booking.EventId);
@@ -44,8 +45,8 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            var booking1 = await bookingService.CreateBookingAsync(eventId);
-            var booking2 = await bookingService.CreateBookingAsync(eventId);
+            var booking1 = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
+            var booking2 = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
 
             Assert.NotEqual(booking1.Id, booking2.Id);
         }
@@ -63,9 +64,10 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            var createdBooking = await bookingService.CreateBookingAsync(eventId);
+            var userId = Guid.NewGuid();
+            var createdBooking = await bookingService.CreateBookingAsync(eventId, userId);
 
-            var retrievedBooking = await bookingService.GetBookingByIdAsync(createdBooking.Id);
+            var retrievedBooking = await bookingService.GetBookingByIdAsync(createdBooking.Id, userId, UserRole.User);
 
             Assert.NotNull(retrievedBooking);
             Assert.Equal(createdBooking.Id, retrievedBooking.Id);
@@ -82,7 +84,7 @@ namespace TicketFlow.Tests
             var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.GetBookingByIdAsync(Guid.NewGuid()));
+                bookingService.GetBookingByIdAsync(Guid.NewGuid(), Guid.NewGuid(), UserRole.User));
         }
 
         [Fact]
@@ -95,12 +97,13 @@ namespace TicketFlow.Tests
             env.SeedEvent(eventItem);
 
             BookingResponseDto booking;
+            var userId = Guid.NewGuid();
 
             using (var createScope = env.CreateScope())
             {
                 var bookingService = createScope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                booking = await bookingService.CreateBookingAsync(eventItem.Id);
+                booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
             }
 
             var bookingToUpdate = env.FindBooking(booking.Id);
@@ -114,7 +117,7 @@ namespace TicketFlow.Tests
             {
                 var bookingService = verificationScope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                var updatedBooking = await bookingService.GetBookingByIdAsync(booking.Id);
+                var updatedBooking = await bookingService.GetBookingByIdAsync(booking.Id, userId, UserRole.User);
 
                 Assert.Equal(nameof(BookingStatus.Confirmed), updatedBooking.Status);
                 Assert.NotNull(updatedBooking.ProcessedAt);
@@ -132,7 +135,7 @@ namespace TicketFlow.Tests
             var fakeEventId = Guid.NewGuid();
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.CreateBookingAsync(fakeEventId));
+                bookingService.CreateBookingAsync(fakeEventId, Guid.NewGuid()));
         }
 
         [Fact]
@@ -148,7 +151,7 @@ namespace TicketFlow.Tests
             env.RemoveEvent(eventItem);
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.CreateBookingAsync(eventItem.Id));
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
         }
 
         [Fact]
@@ -162,7 +165,7 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             var storedEvent = env.FindEvent(eventItem.Id);
 
@@ -181,7 +184,7 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             env.BookingRepository.Verify(
                 r => r.SaveChangesAsync(It.IsAny<CancellationToken>()),
@@ -203,10 +206,10 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            await bookingService.CreateBookingAsync(eventItem.Id);
+            await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
 
             await Assert.ThrowsAsync<NoAvailableSeatsException>(() =>
-                bookingService.CreateBookingAsync(eventItem.Id));
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
         }
 
         [Fact]
@@ -227,7 +230,7 @@ namespace TicketFlow.Tests
 
                     try
                     {
-                        var booking = await bookingService.CreateBookingAsync(eventItem.Id);
+                        var booking = await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
                         return booking.Id;
                     }
                     catch (NoAvailableSeatsException)
@@ -253,6 +256,51 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
+        public async Task CreateBookingAsync_ShouldPreventOverbooking_ForEachEvent_UnderConcurrentMixedLoad()
+        {
+            using var env = TestHelpers.Create();
+
+            var eventA = TestHelpers.CreateTestEvent(3);
+            var eventB = TestHelpers.CreateTestEvent(3);
+
+            env.SeedEvent(eventA);
+            env.SeedEvent(eventB);
+
+            var tasks = Enumerable.Range(0, 20)
+                .Select(i => Task.Run(async () =>
+                {
+                    using var requestScope = env.CreateScope();
+
+                    var bookingService = requestScope.ServiceProvider.GetRequiredService<IBookingService>();
+                    var targetEventId = i % 2 == 0 ? eventA.Id : eventB.Id;
+
+                    try
+                    {
+                        var booking = await bookingService.CreateBookingAsync(targetEventId, Guid.NewGuid());
+                        return booking.Id;
+                    }
+                    catch (NoAvailableSeatsException)
+                    {
+                        return Guid.Empty;
+                    }
+                }));
+
+            var results = await Task.WhenAll(tasks);
+
+            var successfulBookingIds = results.Where(id => id != Guid.Empty).ToList();
+
+            var updatedEventA = env.FindEvent(eventA.Id);
+            var updatedEventB = env.FindEvent(eventB.Id);
+
+            Assert.NotNull(updatedEventA);
+            Assert.NotNull(updatedEventB);
+            Assert.Equal(0, updatedEventA.AvailableSeats);
+            Assert.Equal(0, updatedEventB.AvailableSeats);
+            Assert.Equal(6, successfulBookingIds.Count);
+            Assert.Equal(6, successfulBookingIds.Distinct().Count());
+        }
+
+        [Fact]
         public async Task CreateBookingAsync_ShouldGenerateUniqueIds_UnderConcurrentLoad()
         {
             using var env = TestHelpers.Create();
@@ -270,7 +318,7 @@ namespace TicketFlow.Tests
 
                         var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                        return await bookingService.CreateBookingAsync(eventItem.Id);
+                        return await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
                     }));
 
             var bookings = await Task.WhenAll(tasks);
@@ -282,6 +330,169 @@ namespace TicketFlow.Tests
 
             Assert.Equal(seats, allBookings.Count);
             Assert.Equal(seats, allBookings.Select(b => b.Id).Distinct().Count());
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldThrowEventAlreadyStartedException_WhenEventHasAlreadyStarted()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateStartedTestEvent(10);
+
+            env.SeedEvent(eventItem);
+
+            await Assert.ThrowsAsync<EventAlreadyStartedException>(() =>
+                bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid()));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldThrowBookingLimitExceededException_WhenUserReachesActiveBookingsLimit()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(20);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await bookingService.CreateBookingAsync(eventItem.Id, userId);
+            }
+
+            await Assert.ThrowsAsync<BookingLimitExceededException>(() =>
+                bookingService.CreateBookingAsync(eventItem.Id, userId));
+        }
+
+        [Fact]
+        public async Task CreateBookingAsync_ShouldSucceed_WhenAnotherUserHasReachedTheirOwnLimit()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(20);
+            var firstUserId = Guid.NewGuid();
+            var secondUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await bookingService.CreateBookingAsync(eventItem.Id, firstUserId);
+            }
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, secondUserId);
+
+            Assert.Equal(nameof(BookingStatus.Pending), booking.Status);
+        }
+
+        [Fact]
+        public async Task GetBookingByIdAsync_ShouldThrowForbiddenException_WhenNonOwnerNonAdminRequests()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var otherUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                bookingService.GetBookingByIdAsync(booking.Id, otherUserId, UserRole.User));
+        }
+
+        [Fact]
+        public async Task GetBookingByIdAsync_ShouldReturnBooking_WhenAdminRequestsOtherUserBooking()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var adminId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            var retrievedBooking = await bookingService.GetBookingByIdAsync(booking.Id, adminId, UserRole.Admin);
+
+            Assert.Equal(booking.Id, retrievedBooking.Id);
+        }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldCancelBooking_WhenOwnerCancelsBeforeEventStart()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
+
+            await bookingService.CancelBookingAsync(booking.Id, userId, UserRole.User);
+
+            var storedBooking = env.FindBooking(booking.Id);
+
+            Assert.NotNull(storedBooking);
+            Assert.Equal(BookingStatus.Cancelled, storedBooking.Status);
+
+            var storedEvent = env.FindEvent(eventItem.Id);
+
+            Assert.NotNull(storedEvent);
+            Assert.Equal(10, storedEvent.AvailableSeats);
+        }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldThrowForbiddenException_WhenNonOwnerNonAdminCancels()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var otherUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                bookingService.CancelBookingAsync(booking.Id, otherUserId, UserRole.User));
+        }
+
+        [Fact]
+        public async Task CancelBookingAsync_ShouldThrowEventAlreadyStartedException_WhenEventHasAlreadyStarted()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateStartedTestEvent(10);
+            var userId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+            env.SeedBooking(new Booking(eventItem.Id, userId));
+
+            var booking = env.AllBookings().Single(b => b.EventId == eventItem.Id);
+
+            await Assert.ThrowsAsync<EventAlreadyStartedException>(() =>
+                bookingService.CancelBookingAsync(booking.Id, userId, UserRole.User));
         }
     }
 }

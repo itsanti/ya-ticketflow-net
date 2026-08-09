@@ -1,4 +1,4 @@
-﻿using TicketFlow.Application.Abstractions;
+using TicketFlow.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using TicketFlow.Infrastructure.Persistence;
 using TicketFlow.Infrastructure.Repositories;
@@ -33,6 +33,16 @@ namespace TicketFlow.IntegrationTests.Repositories
             return eventItem;
         }
 
+        private static async Task<User> StoreUser(AppDbContext context)
+        {
+            var user = User.Create($"user-{Guid.NewGuid()}", "hash", UserRole.User);
+
+            await context.Users.AddAsync(user);
+            await context.SaveChangesAsync();
+
+            return user;
+        }
+
         [Fact]
         public async Task AddAsync_ShouldPersistBooking()
         {
@@ -41,8 +51,9 @@ namespace TicketFlow.IntegrationTests.Repositories
             var repository = new BookingRepository(context);
 
             var eventItem = await StoreEvent(context);
+            var user = await StoreUser(context);
 
-            var booking = new Booking(eventItem.Id);
+            var booking = new Booking(eventItem.Id, user.Id);
 
             await repository.AddAsync(booking);
             await repository.SaveChangesAsync();
@@ -53,6 +64,7 @@ namespace TicketFlow.IntegrationTests.Repositories
             Assert.NotNull(storedBooking);
             Assert.Equal(booking.Id, storedBooking.Id);
             Assert.Equal(eventItem.Id, storedBooking.EventId);
+            Assert.Equal(user.Id, storedBooking.UserId);
             Assert.Equal(BookingStatus.Pending, storedBooking.Status);
             Assert.Null(storedBooking.ProcessedAt);
         }
@@ -65,7 +77,8 @@ namespace TicketFlow.IntegrationTests.Repositories
             var repository = new BookingRepository(context);
 
             var eventItem = await StoreEvent(context);
-            var booking = new Booking(eventItem.Id);
+            var user = await StoreUser(context);
+            var booking = new Booking(eventItem.Id, user.Id);
 
             await context.Bookings.AddAsync(booking);
             await context.SaveChangesAsync();
@@ -100,10 +113,11 @@ namespace TicketFlow.IntegrationTests.Repositories
             var eventItemPending = await StoreEvent(context);
             var eventItemConfirmed = await StoreEvent(context);
             var eventItemRejected = await StoreEvent(context);
+            var user = await StoreUser(context);
 
-            var bookingPending = new Booking(eventItemPending.Id);
-            var bookingConfirmed = new Booking(eventItemConfirmed.Id);
-            var bookingRejected = new Booking(eventItemRejected.Id);
+            var bookingPending = new Booking(eventItemPending.Id, user.Id);
+            var bookingConfirmed = new Booking(eventItemConfirmed.Id, user.Id);
+            var bookingRejected = new Booking(eventItemRejected.Id, user.Id);
 
             bookingConfirmed.Confirm();
             bookingRejected.Reject();
@@ -131,7 +145,8 @@ namespace TicketFlow.IntegrationTests.Repositories
             var repository = new BookingRepository(context);
 
             var eventItem = await StoreEvent(context);
-            var booking = new Booking(eventItem.Id);
+            var user = await StoreUser(context);
+            var booking = new Booking(eventItem.Id, user.Id);
 
             await context.Bookings.AddAsync(booking);
             await context.SaveChangesAsync();
@@ -154,7 +169,8 @@ namespace TicketFlow.IntegrationTests.Repositories
             var repository = new BookingRepository(context);
 
             var eventItem = await StoreEvent(context);
-            var booking = new Booking(eventItem.Id);
+            var user = await StoreUser(context);
+            var booking = new Booking(eventItem.Id, user.Id);
 
             await context.Bookings.AddAsync(booking);
             await context.SaveChangesAsync();
@@ -177,7 +193,8 @@ namespace TicketFlow.IntegrationTests.Repositories
             await using var context = _fixture.CreateContext();
             var repository = new BookingRepository(context);
 
-            var booking = new Booking(Guid.NewGuid());
+            var user = await StoreUser(context);
+            var booking = new Booking(Guid.NewGuid(), user.Id);
 
             await repository.AddAsync(booking);
 
@@ -194,7 +211,8 @@ namespace TicketFlow.IntegrationTests.Repositories
             var repository = new BookingRepository(context);
 
             var eventItem = await StoreEvent(context);
-            var booking = new Booking(eventItem.Id);
+            var user = await StoreUser(context);
+            var booking = new Booking(eventItem.Id, user.Id);
 
             await context.Bookings.AddAsync(booking);
             await context.SaveChangesAsync();

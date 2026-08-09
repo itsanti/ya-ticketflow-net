@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Application.DTOs.Events;
 using TicketFlow.Application.DTOs.Pagination;
 using TicketFlow.Application.Services;
@@ -29,6 +30,7 @@ namespace TicketFlow.Presentation.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Guid>> CreateEvent(CreateEventDto dto)
         {
             var newEventId = await _eventService.AddEventAsync(dto);
@@ -36,12 +38,14 @@ namespace TicketFlow.Presentation.Controllers
         }
 
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<EventInfoDto>> UpdateEvent(Guid id, UpdateEventDto dto)
         {
             return Ok(await _eventService.UpdateEventAsync(id, dto));
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> RemoveEvent(Guid id)
         {
             await _eventService.RemoveEventAsync(id);

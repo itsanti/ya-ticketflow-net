@@ -8,7 +8,7 @@ namespace TicketFlow.Tests.Models
         [Fact]
         public void Confirm_ShouldSetStatusToConfirmed_AndSetProcessedAt()
         {
-            var booking = new Booking(Guid.NewGuid());
+            var booking = new Booking(Guid.NewGuid(), Guid.NewGuid());
 
             booking.Confirm();
 
@@ -19,7 +19,7 @@ namespace TicketFlow.Tests.Models
         [Fact]
         public void Reject_ShouldSetStatusToRejected_AndSetProcessedAt()
         {
-            var booking = new Booking(Guid.NewGuid());
+            var booking = new Booking(Guid.NewGuid(), Guid.NewGuid());
 
             booking.Reject();
 
