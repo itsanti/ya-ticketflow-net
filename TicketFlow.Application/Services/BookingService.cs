@@ -61,12 +61,17 @@ namespace TicketFlow.Application.Services
             }
         }
 
-        public async Task<BookingResponseDto> GetBookingByIdAsync(Guid bookingId)
+        public async Task<BookingResponseDto> GetBookingByIdAsync(Guid bookingId, Guid userId, UserRole role)
         {
             var booking = await _bookingRepo.GetByIdAsNoTrackingAsync(bookingId);
             if (booking == null)
             {
                 throw new NotFoundException($"Booking with ID {bookingId} not found.");
+            }
+
+            if (booking.UserId != userId && role != UserRole.Admin)
+            {
+                throw new ForbiddenException("You can not view other user booking.");
             }
 
             return MapToDto(booking);

@@ -22,7 +22,7 @@ namespace TicketFlow.Presentation.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<BookingResponseDto>> GetBooking(Guid id)
         {
-            return Ok(await _bookingService.GetBookingByIdAsync(id));
+            return Ok(await _bookingService.GetBookingByIdAsync(id, GetUserId(), GetUserRole()));
         }
 
         [HttpPost("/events/{id}/book")]

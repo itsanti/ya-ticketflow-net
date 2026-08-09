@@ -7,7 +7,7 @@ namespace TicketFlow.Application.Services
     {
         Task<BookingResponseDto> CreateBookingAsync(Guid eventId, Guid userId);
 
-        Task<BookingResponseDto> GetBookingByIdAsync(Guid bookingId);
+        Task<BookingResponseDto> GetBookingByIdAsync(Guid bookingId, Guid userId, UserRole role);
 
         Task CancelBookingAsync(Guid bookingId, Guid userId, UserRole role);
     }

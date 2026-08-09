@@ -64,9 +64,10 @@ namespace TicketFlow.Tests
 
             env.SeedEvent(eventItem);
 
-            var createdBooking = await bookingService.CreateBookingAsync(eventId, Guid.NewGuid());
+            var userId = Guid.NewGuid();
+            var createdBooking = await bookingService.CreateBookingAsync(eventId, userId);
 
-            var retrievedBooking = await bookingService.GetBookingByIdAsync(createdBooking.Id);
+            var retrievedBooking = await bookingService.GetBookingByIdAsync(createdBooking.Id, userId, UserRole.User);
 
             Assert.NotNull(retrievedBooking);
             Assert.Equal(createdBooking.Id, retrievedBooking.Id);
@@ -83,7 +84,7 @@ namespace TicketFlow.Tests
             var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
             await Assert.ThrowsAsync<NotFoundException>(() =>
-                bookingService.GetBookingByIdAsync(Guid.NewGuid()));
+                bookingService.GetBookingByIdAsync(Guid.NewGuid(), Guid.NewGuid(), UserRole.User));
         }
 
         [Fact]
@@ -96,12 +97,13 @@ namespace TicketFlow.Tests
             env.SeedEvent(eventItem);
 
             BookingResponseDto booking;
+            var userId = Guid.NewGuid();
 
             using (var createScope = env.CreateScope())
             {
                 var bookingService = createScope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                booking = await bookingService.CreateBookingAsync(eventItem.Id, Guid.NewGuid());
+                booking = await bookingService.CreateBookingAsync(eventItem.Id, userId);
             }
 
             var bookingToUpdate = env.FindBooking(booking.Id);
@@ -115,7 +117,7 @@ namespace TicketFlow.Tests
             {
                 var bookingService = verificationScope.ServiceProvider.GetRequiredService<IBookingService>();
 
-                var updatedBooking = await bookingService.GetBookingByIdAsync(booking.Id);
+                var updatedBooking = await bookingService.GetBookingByIdAsync(booking.Id, userId, UserRole.User);
 
                 Assert.Equal(nameof(BookingStatus.Confirmed), updatedBooking.Status);
                 Assert.NotNull(updatedBooking.ProcessedAt);
@@ -342,6 +344,45 @@ namespace TicketFlow.Tests
             var booking = await bookingService.CreateBookingAsync(eventItem.Id, secondUserId);
 
             Assert.Equal(nameof(BookingStatus.Pending), booking.Status);
+        }
+
+        [Fact]
+        public async Task GetBookingByIdAsync_ShouldThrowForbiddenException_WhenNonOwnerNonAdminRequests()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var otherUserId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                bookingService.GetBookingByIdAsync(booking.Id, otherUserId, UserRole.User));
+        }
+
+        [Fact]
+        public async Task GetBookingByIdAsync_ShouldReturnBooking_WhenAdminRequestsOtherUserBooking()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+            var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            var ownerId = Guid.NewGuid();
+            var adminId = Guid.NewGuid();
+
+            env.SeedEvent(eventItem);
+
+            var booking = await bookingService.CreateBookingAsync(eventItem.Id, ownerId);
+
+            var retrievedBooking = await bookingService.GetBookingByIdAsync(booking.Id, adminId, UserRole.Admin);
+
+            Assert.Equal(booking.Id, retrievedBooking.Id);
         }
 
         [Fact]
