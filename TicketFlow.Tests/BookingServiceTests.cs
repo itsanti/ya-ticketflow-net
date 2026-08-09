@@ -405,6 +405,11 @@ namespace TicketFlow.Tests
 
             Assert.NotNull(storedBooking);
             Assert.Equal(BookingStatus.Cancelled, storedBooking.Status);
+
+            var storedEvent = env.FindEvent(eventItem.Id);
+
+            Assert.NotNull(storedEvent);
+            Assert.Equal(10, storedEvent.AvailableSeats);
         }
 
         [Fact]

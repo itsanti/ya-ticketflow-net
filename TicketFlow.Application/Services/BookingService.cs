@@ -119,6 +119,7 @@ namespace TicketFlow.Application.Services
             }
 
             booking.Cancel();
+            eventItem.ReleaseSeats();
             await _bookingRepo.SaveChangesAsync();
         }
     }
