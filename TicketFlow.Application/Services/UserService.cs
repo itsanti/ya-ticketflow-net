@@ -17,13 +17,8 @@ namespace TicketFlow.Application.Services
         private readonly IPasswordHasher _hasher = hasher;
         private readonly IJwtTokenGenerator _jwtGenerator = jwtGenerator;
 
-        public async Task RegisterAsync(string login, string password, string role)
+        public async Task RegisterAsync(string login, string password)
         {
-            if (!Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole) || !Enum.IsDefined(parsedRole))
-            {
-                throw new ValidationException($"Role must be one of: {string.Join(", ", Enum.GetNames<UserRole>())}");
-            }
-
             var existingUser = await _userRepo.GetByLoginAsync(login);
 
             if (existingUser != null)
@@ -32,7 +27,7 @@ namespace TicketFlow.Application.Services
             }
 
             var passwordHash = _hasher.Hash(password);
-            var user = User.Create(login, passwordHash, parsedRole);
+            var user = User.Create(login, passwordHash, UserRole.User);
 
             await _userRepo.AddAsync(user);
             await _userRepo.SaveChangesAsync();

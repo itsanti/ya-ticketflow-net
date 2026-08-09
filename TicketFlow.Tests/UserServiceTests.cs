@@ -20,19 +20,6 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
-        public async Task RegisterAsync_ShouldThrowValidationException_WhenRoleIsInvalid()
-        {
-            _userRepo
-                .Setup(r => r.GetByLoginAsync("john", It.IsAny<CancellationToken>()))
-                .ReturnsAsync((User?)null);
-
-            await Assert.ThrowsAsync<ValidationException>(() =>
-                _userService.RegisterAsync("john", "password", "SuperAdmin"));
-
-            _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
         public async Task RegisterAsync_ShouldThrowValidationException_WhenLoginAlreadyExists()
         {
             var existingUser = User.Create("john", "existing-hash", UserRole.User);
@@ -42,13 +29,13 @@ namespace TicketFlow.Tests
                 .ReturnsAsync(existingUser);
 
             await Assert.ThrowsAsync<ValidationException>(() =>
-                _userService.RegisterAsync("john", "password", "User"));
+                _userService.RegisterAsync("john", "password"));
 
             _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]
-        public async Task RegisterAsync_ShouldHashPasswordAndPersistUser_WhenDataIsValid()
+        public async Task RegisterAsync_ShouldHashPasswordAndPersistUserAsUserRole_WhenDataIsValid()
         {
             _userRepo
                 .Setup(r => r.GetByLoginAsync("john", It.IsAny<CancellationToken>()))
@@ -65,12 +52,12 @@ namespace TicketFlow.Tests
                 .Callback<User, CancellationToken>((user, _) => addedUser = user)
                 .Returns(Task.CompletedTask);
 
-            await _userService.RegisterAsync("john", "plain-password", "Admin");
+            await _userService.RegisterAsync("john", "plain-password");
 
             Assert.NotNull(addedUser);
             Assert.Equal("john", addedUser.Login);
             Assert.Equal("hashed-password", addedUser.PasswordHash);
-            Assert.Equal(UserRole.Admin, addedUser.Role);
+            Assert.Equal(UserRole.User, addedUser.Role);
 
             _userRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         }

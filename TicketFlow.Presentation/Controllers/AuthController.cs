@@ -20,7 +20,7 @@ namespace TicketFlow.Presentation.Controllers
         [HttpPost("register")]
         public async Task<ActionResult> Register(RegisterUserDto dto)
         {
-            await _userService.RegisterAsync(dto.Login, dto.Password, dto.Role);
+            await _userService.RegisterAsync(dto.Login, dto.Password);
             return NoContent();
         }
 
