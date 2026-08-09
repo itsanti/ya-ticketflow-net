@@ -372,14 +372,14 @@ dotnet ef database update \
 | Метод    | Путь              | Описание                        | Статусы           |
 |----------|-------------------|---------------------------------|-------------------|
 | `POST`   | `/auth/register`  | Зарегистрировать пользователя (всегда роль `User` — см. [ролевую модель](#ролевая-модель)) | 204, 400 |
-| `POST`   | `/auth/login`     | Войти и получить JWT-токен      | 200, 404          |
+| `POST`   | `/auth/login`     | Войти и получить JWT-токен      | 200, 401          |
 | `GET`    | `/events`         | Список событий с фильтрацией и пагинацией | 200 |
 | `GET`    | `/events/{id}`    | Получить событие по ID          | 200, 404          |
 | `POST`   | `/events`         | Создать новое событие (только Admin) | 201, 400, 401, 403 |
 | `PUT`    | `/events/{id}`    | Обновить событие целиком (только Admin) | 200, 400, 401, 403, 404 |
 | `DELETE` | `/events/{id}`    | Удалить событие (только Admin)  | 204, 401, 403, 404 |
 | `POST`   | `/events/{id}/book` | Забронировать билет на мероприятие (Отложенная обработка) | 202, 400, 401, 404, 409 |
-| `GET`    | `/bookings/{id}`    | Получить текущий статус и информацию о бронировании | 200, 401, 404 |
+| `GET`    | `/bookings/{id}`    | Получить текущий статус и информацию о бронировании: свою — любой пользователь, чужую — только Admin | 200, 401, 403, 404 |
 | `DELETE` | `/bookings/{id}`    | Отменить бронь: свою — любой пользователь, чужую — только Admin | 204, 401, 403, 404 |
  
  Параметры запроса (Query): `title` (строка), `from` (дата), `to` (дата), `page` (int), `pageSize` (int).
@@ -549,7 +549,7 @@ dotnet run --project TicketFlow.Presentation -- create-admin <login> <password>
 
 ## 🧪 Тестирование
 
-В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. Тестовые проекты ссылаются напрямую на слои, а не на веб-проект: `TicketFlow.Tests` — на `Domain` и `Application`, `TicketFlow.IntegrationTests` — дополнительно на `Infrastructure`.
+В проекте используется два уровня тестирования: unit-тесты и интеграционные тесты. `TicketFlow.Tests` ссылается на `Domain`, `Application` и `Infrastructure` (последнее — точечно, для прямого тестирования конкретных реализаций без DI, см. ниже); `TicketFlow.IntegrationTests` — дополнительно на `Presentation`, чтобы поднимать реальный HTTP-пайплайн через `WebApplicationFactory`.
 
 Для запуска всех тестов:
 ```bash
@@ -583,13 +583,16 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Основные наборы unit-тестов:
 
 - `EventServiceTests` — проверка бизнес-логики управления событиями: создание, обновление, удаление, получение по ID, фильтрация, пагинация и валидация дат.
-- `BookingServiceTests` — проверка сценариев бронирования: создание заявки, проверку отсутствующих событий, sold out-сценарии, защиту от овербукинга и новые доменные правила спринта 8 — запрет брони уже начавшегося события (`CreateBookingAsync_ShouldThrowEventAlreadyStartedException_WhenEventHasAlreadyStarted`), лимит активных броней (`CreateBookingAsync_ShouldThrowBookingLimitExceededException_WhenUserReachesActiveBookingsLimit`) и независимость лимитов разных пользователей (`CreateBookingAsync_ShouldSucceed_WhenAnotherUserHasReachedTheirOwnLimit`).
+- `BookingServiceTests` — проверка сценариев бронирования: создание заявки, проверку отсутствующих событий, sold out-сценарии, защиту от овербукинга, доменные правила — запрет брони уже начавшегося события, лимит активных броней и его независимость между пользователями (`CreateBookingAsync_Should*`), а также отмену брони — успешную (владелец, до начала события), `ForbiddenException` для чужой брони, `EventAlreadyStartedException` при отмене после начала события (`CancelBookingAsync_Should*`) и `ForbiddenException` при просмотре чужой брони не-владельцем (`GetBookingByIdAsync_Should*`).
+- `UserServiceTests` — `RegisterAsync`: дубликат логина → `ValidationException`, роль всегда создаётся как `User` независимо от входных данных; `LoginAsync`: несуществующий логин и неверный пароль → `UnauthorizedException`, валидные данные → токен.
+- `PasswordHasherTests` — формат хеша (BCrypt), разная соль на одинаковый пароль, верификация правильного/неправильного пароля для нового формата и для legacy SHA-256 (обратная совместимость).
+- `JwtTokenGeneratorTests` — состав claims токена (`nameid`/`unique_name`/`role`/`jti`), issuer/audience, уникальность `jti`, успешная и неуспешная (чужой секрет) валидация через `JwtSecurityTokenHandler`.
 - `BookingProcessingBackgroundServiceTests` — проверка фоновой обработки заявок: перевод Pending в Confirmed или Rejected, заполнение ProcessedAt, обработка отмены через CancellationToken.
 - `EventTests` и `BookingTests` — изолированные тесты доменных моделей.
 
 ### Интеграционные тесты
 
-Проект `TicketFlow.IntegrationTests` проверяет слой доступа к данным на реальной PostgreSQL через `Testcontainers.PostgreSql`.
+Проект `TicketFlow.IntegrationTests` проверяет и слой доступа к данным на реальной PostgreSQL через `Testcontainers.PostgreSql`, и реальный HTTP-пайплайн через `WebApplicationFactory` (routing, `[Authorize]`, JwtBearer, `GlobalExceptionHandlingMiddleware`) поверх того же контейнера.
 Интеграционные тесты:
 1. Автоматически поднимают PostgreSQL-контейнер.
 2. Сбрасывают тестовую базу перед тестами.
@@ -598,11 +601,13 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 5. Проверяют внешний ключ `bookings.event_id → events.id`.
 6. Покрывают методы `EventRepository`.
 7. Покрывают методы `BookingRepository`, в том числе с реальным `bookings.user_id → users.id` (брони в тестах создаются только для существующего пользователя — колонка обязательна и защищена внешним ключом).
-8. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
-9. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
-10. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+8. Покрывают методы `UserRepository` (`UserRepositoryTests`): успешное добавление, `GetByLoginAsync` для существующего/несуществующего логина, нарушение уникального индекса логина — `DbUpdateException` с `PostgresException.SqlState == "23505"`.
+9. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
+10. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
+11. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+12. Покрывают HTTP-уровень (`AuthorizationHttpTests`, через `CustomWebApplicationFactory`): запрос без токена на `[Authorize]`-маршрут → 401; `POST /events` от роли `User` → 403; неверный пароль на `/auth/login` → 401; отмена чужой брони → 403; попытка передать `"role": "Admin"` сырым JSON в `/auth/register` игнорируется (роль всё равно `User`).
 
-Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString, configuration)` и `AddApplicationServices()`, то есть повторяет composition root приложения. Поскольку у тестового проекта нет `appsettings.json`, `configuration` собирается в памяти (`ConfigurationBuilder().AddInMemoryCollection(...)`) с тестовыми значениями секции `Jwt`.
+Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString, configuration)` и `AddApplicationServices(configuration)`, то есть повторяет composition root приложения. Поскольку у тестового проекта нет `appsettings.json`, `configuration` собирается в памяти (`ConfigurationBuilder().AddInMemoryCollection(...)`) с тестовыми значениями секции `Jwt`. HTTP-тесты используют отдельный `CustomWebApplicationFactory`: запускают приложение в окружении `Development` (чтобы `Jwt:Secret` подхватился из `appsettings.Development.json` ещё до применения тестовых оверрайдов конфигурации) и подменяют только `DbContextOptions<AppDbContext>` на тот же Testcontainers-контейнер.
 
 ### Как писать новые тесты
 
@@ -623,7 +628,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 Чего в юнит-тестах делать не стоит:
 
-- добавлять в `TicketFlow.Tests` ссылку на `Infrastructure` — тогда тест перестанет быть юнит-тестом, а моки портов потеряют смысл;
+- использовать ссылку `TicketFlow.Tests` → `Infrastructure` для тестирования сервисов через мок-порты — тогда тест перестанет быть юнит-тестом, а моки портов потеряют смысл. Ссылка существует только для прямого тестирования конкретных реализаций без DI и без портов (`PasswordHasherTests`, `JwtTokenGeneratorTests`) — у этих классов нет интерфейса, который можно было бы замокать вместо них, они и есть тестируемая единица;
 - проверять поведение хранилища. Логика фильтрации в моке `GetPagedAsync` повторяет `EventRepository` лишь приблизительно и не заменяет SQL — новые правила выборки проверяются интеграционным тестом;
 - полагаться на то, что `SaveChangesAsync` что-то меняет: в моках это пустышка, объекты в списках и так изменяются по ссылке.
 
@@ -706,7 +711,8 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 1. Бронь должна существовать (иначе `NotFoundException` → 404).
 2. Отменить бронь может либо её владелец, либо пользователь с ролью `Admin` — иначе `ForbiddenException` → 403.
-3. Повторная отмена уже `Cancelled`/`Rejected` брони запрещена доменной моделью (`Booking.Cancel()` бросает `InvalidOperationDomainException` → 400).
+3. Событие ещё не началось: `event.StartAt` должен быть в будущем (иначе `EventAlreadyStartedException` → 400) — отмена после начала события запрещена, даже владельцу или Admin.
+4. Повторная отмена уже `Cancelled`/`Rejected` брони запрещена доменной моделью (`Booking.Cancel()` бросает `InvalidOperationDomainException` → 400).
 
 ### ⚙️ Логика фоновой обработки (Background Processing)
 Для реализации паттерна «быстрый ответ + отложенная обработка» запущен фоновый хостинг-сервис `BookingProcessingBackgroundService`:
