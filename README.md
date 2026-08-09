@@ -44,7 +44,7 @@
 │   │   ├── Configurations/             # Fluent API-конфигурации сущностей (в т.ч. UserConfiguration)
 │   │   └── Migrations/                 # EF Core-миграции схемы БД
 │   ├── Repositories/                   # Реализации портов (EventRepository, BookingRepository, UserRepository)
-│   ├── Security/                       # PasswordHasher (SHA-256), JwtTokenGenerator, JwtOptions
+│   ├── Security/                       # PasswordHasher (BCrypt), JwtTokenGenerator, JwtOptions
 │   └── DependencyInjection/            # AddInfrastructureServices, ApplyMigrations
 ├── TicketFlow.Presentation/            # Presentation — точка входа (зависит от Application и Infrastructure)
 │   ├── Controllers/                    # Эндпоинты REST API (EventsController, BookingsController, AuthController)
@@ -83,7 +83,7 @@ Domain не ссылается ни на один проект и не соде�
 
 Сценарии использования: создать событие, забронировать место, получить статус брони, зарегистрировать и авторизовать пользователя. Здесь же живут DTO — контракты входа и выхода use cases — и фоновая обработка заявок.
 
-Ключевой элемент слоя — **интерфейсы портов** в `Abstractions/`. Application объявляет, что ему нужно от внешнего мира (`IEventRepository`, `IBookingRepository`, `IUserRepository`), но не знает, кто и как это реализует. Помимо репозиториев здесь же объявлены порты для аутентификации: `IPasswordHasher` (хеширование и проверка пароля) и `IJwtTokenGenerator` (выпуск JWT по данным пользователя). Application не знает, что хеш считается через SHA-256, а токен подписывается HMAC-SHA256 — это детали Infrastructure. В этом суть инверсии зависимостей: интерфейс принадлежит тому, кто им пользуется, а не тому, кто его реализует.
+Ключевой элемент слоя — **интерфейсы портов** в `Abstractions/`. Application объявляет, что ему нужно от внешнего мира (`IEventRepository`, `IBookingRepository`, `IUserRepository`), но не знает, кто и как это реализует. Помимо репозиториев здесь же объявлены порты для аутентификации: `IPasswordHasher` (хеширование и проверка пароля) и `IJwtTokenGenerator` (выпуск JWT по данным пользователя). Application не знает, что хеш считается через BCrypt, а токен подписывается HMAC-SHA256 — это детали Infrastructure. В этом суть инверсии зависимостей: интерфейс принадлежит тому, кто им пользуется, а не тому, кто его реализует.
 
 Application ссылается только на Domain. Ссылки на Infrastructure нет — это ключевое правило, и его соблюдение проверяет компилятор, а не договорённость в команде.
 
@@ -91,7 +91,7 @@ Application ссылается только на Domain. Ссылки на Infra
 
 Адаптеры к внешним технологиям: `AppDbContext`, Fluent API-конфигурации, миграции и реализации репозиториев поверх EF Core и PostgreSQL. Слой реализует порты, объявленные в Application.
 
-Здесь же живёт `Security/`: `PasswordHasher` (реализация `IPasswordHasher` на `System.Security.Cryptography.SHA256`) и `JwtTokenGenerator` (реализация `IJwtTokenGenerator` на `System.IdentityModel.Tokens.Jwt`), плюс `JwtOptions` — параметры токена, привязанные к секции `Jwt` конфигурации.
+Здесь же живёт `Security/`: `PasswordHasher` (реализация `IPasswordHasher` на BCrypt, с поддержкой верификации legacy-хешей `System.Security.Cryptography.SHA256`) и `JwtTokenGenerator` (реализация `IJwtTokenGenerator` на `System.IdentityModel.Tokens.Jwt`), плюс `JwtOptions` — параметры токена, привязанные к секции `Jwt` конфигурации.
 
 Здесь сосредоточены все технологические решения. Замена PostgreSQL на другую СУБД, EF Core на Dapper или SHA-256 на BCrypt затрагивает только эту сборку: Application и Domain остаются нетронутыми, потому что работают с интерфейсами.
 
@@ -185,7 +185,7 @@ builder.Services.AddPresentationServices(builder.Configuration);
 - **EF Provider**: Npgsql.EntityFrameworkCore.PostgreSQL
 - **Authentication**: JWT Bearer (Microsoft.AspNetCore.Authentication.JwtBearer)
 - **Token generation**: System.IdentityModel.Tokens.Jwt
-- **Password hashing**: SHA-256 (System.Security.Cryptography)
+- **Password hashing**: BCrypt (BCrypt.Net-Next), с верификацией legacy-хешей SHA-256 (System.Security.Cryptography)
 - **Mocking**: Moq (подмена портов в юнит-тестах)
 - **Integration Tests Database**: PostgreSQL через Testcontainers
 - **Containers**: Testcontainers.PostgreSql
