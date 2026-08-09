@@ -1,9 +1,11 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Application.Services;
 using TicketFlow.Domain.Enums;
+using TicketFlow.Domain.Exceptions;
 
 namespace TicketFlow.Presentation.Controllers
 {
@@ -44,8 +46,15 @@ namespace TicketFlow.Presentation.Controllers
 
         private Guid GetUserId()
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return Guid.Parse(userIdClaim!);
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                throw new UnauthorizedException("Token does not contain a valid user identifier claim.");
+            }
+
+            return userId;
         }
 
         private UserRole GetUserRole()
