@@ -51,7 +51,8 @@
 │   ├── Middlewares/                    # Логирование запросов, глобальный перехват ошибок
 │   ├── DependencyInjection/            # AddPresentationServices (MVC, JWT-аутентификация, Swagger)
 │   ├── Program.cs                      # Composition root приложения
-│   └── appsettings.json                # Настройки приложения (строка подключения, параметры JWT)
+│   ├── appsettings.json                 # Несекретные настройки (Issuer/Audience/ExpirationMinutes)
+│   └── appsettings.Development.json     # Dev-секреты (Jwt:Secret, строка подключения к локальному Postgres)
 ├── TicketFlow.Tests/                   # Юнит-тесты (ссылаются на Domain и Application, порты — моки)
 │   ├── Models/                         # Изолированные тесты доменных моделей (EventTests, BookingTests)
 │   └── *ServiceTests.cs                # Тесты бизнес-логики и конкурентного доступа
@@ -161,8 +162,8 @@ builder.Services.AddPresentationServices(builder.Configuration);
 - [x] Доменное правило: запрет бронирования уже начавшегося события (`EventAlreadyStartedException`)
 - [x] Доменное правило: лимит активных броней на пользователя (`BookingLimitExceededException`)
 - [x] Доменное правило: отмена брони с проверкой владельца — свою бронь отменяет любой пользователь, чужую только Admin (`ForbiddenException` при нарушении)
-- [x] Хеширование паролей через SHA-256 (`IPasswordHasher`/`PasswordHasher`)
-- [x] Генерация JWT-токена по данным пользователя (`IJwtTokenGenerator`/`JwtTokenGenerator`), параметры вынесены в `appsettings.json`
+- [x] Хеширование паролей через BCrypt (`IPasswordHasher`/`PasswordHasher`), с поддержкой верификации legacy-хешей SHA-256
+- [x] Генерация JWT-токена по данным пользователя (`IJwtTokenGenerator`/`JwtTokenGenerator`), параметры вынесены в конфигурацию (`appsettings.json` + секреты — см. [настройку JWT](#настройка-jwt-аутентификации-и-подключения-к-postgresql))
 - [x] Регистрация (`POST /auth/register`) и вход (`POST /auth/login`) с выдачей JWT
 - [x] JWT-аутентификация в Web API (`AddJwtBearer`) и авторизация по ролям (`[Authorize(Roles = "Admin")]`)
 - [x] Идентификатор текущего пользователя читается из claims токена и передаётся в сценарии бронирования и отмены
@@ -260,27 +261,13 @@ builder.Services.AddPresentationServices(builder.Configuration);
 
 `Microsoft.Extensions.Configuration` нужен тестовому окружению (`PostgreSqlTestFixture`), чтобы собрать in-memory конфигурацию с параметрами `Jwt` — `AddInfrastructureServices` требует `IConfiguration`, а у тестового проекта нет своего `appsettings.json`.
 
-### Настройка подключения к PostgreSQL
+### Настройка JWT-аутентификации и подключения к PostgreSQL
 
-Приложение читает строку подключения по ключу DefaultConnection и регистрирует AppDbContext через PostgreSQL-провайдер.
-Строка подключения задаётся в `TicketFlow.Presentation/appsettings.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres"
-  }
-}
-```
-
-### Настройка JWT-аутентификации
-
-Параметры токена задаются в секции `Jwt` того же файла `TicketFlow.Presentation/appsettings.json`:
+`Jwt:Secret` и `ConnectionStrings:DefaultConnection` (с паролем БД) — секреты и **не хранятся** в `TicketFlow.Presentation/appsettings.json`. Этот файл содержит только несекретные параметры:
 
 ```json
 {
   "Jwt": {
-    "Secret": "bb3b3baf97fbaf799a546676f4636e93326d400819c1d7be1fb7b133d4d3ccad",
     "Issuer": "TicketFlow",
     "Audience": "TicketFlowClient",
     "ExpirationMinutes": 60
@@ -288,11 +275,26 @@ builder.Services.AddPresentationServices(builder.Configuration);
 }
 ```
 
-- `Secret` — ключ подписи HMAC-SHA256, должен быть не короче 256 бит (32 байта / 64 hex-символа), иначе подпись слабая.
+- `Secret` — ключ подписи HMAC-SHA256, должен быть не короче 256 бит (32 байта / 64 hex-символа), иначе подпись слабая. Генерируется командой `openssl rand -hex 32`.
 - `Issuer` / `Audience` — сверяются при валидации токена (`ValidateIssuer`, `ValidateAudience` в `AddJwtBearer`).
 - `ExpirationMinutes` — время жизни токена в минутах.
 
-> ⚠️ **Важно:** значение `Jwt:Secret` в репозитории — только для локальной разработки. В продакшне секрет обязательно нужно вынести из `appsettings.json` в переменные окружения или secret-хранилище (Azure Key Vault, AWS Secrets Manager, HashiCorp Vault и т.п.) и сгенерировать криптостойкое случайное значение, например: `openssl rand -hex 32`. Хранить боевой секрет в Git нельзя.
+**Локальная разработка.** Значения для локального docker-postgres лежат в `TicketFlow.Presentation/appsettings.Development.json` (загружается автоматически при `ASPNETCORE_ENVIRONMENT=Development`, как в `launchSettings.json`). Это dev-only секрет, актуальный только для контейнера из `docker-compose.yml`, поэтому хранить его в репозитории допустимо. При желании его можно вынести из файла в `dotnet user-secrets` (проект уже помечен `UserSecretsId`):
+
+```bash
+dotnet user-secrets set "Jwt:Secret" "<значение>" --project TicketFlow.Presentation
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<значение>" --project TicketFlow.Presentation
+```
+
+**Прод и другие окружения.** Секреты задаются переменными окружения — ASP.NET Core автоматически превращает `__` в `:` при биндинге конфигурации:
+
+```bash
+export Jwt__Secret="$(openssl rand -hex 32)"
+export ConnectionStrings__DefaultConnection="Host=...;Port=5432;Database=eventapi;Username=...;Password=..."
+```
+
+Переменные с префиксом `ASPNETCORE_` (например, `ASPNETCORE_Jwt__Secret`) тоже работают — хост-конфигурация ASP.NET Core сама снимает этот префикс на старте. Если ни один из этих источников не задаёт `Jwt:Secret` в окружении, отличном от Development, приложение упадёт при старте (`InvalidOperationException` в `AddAuthenticationServices`) — это осознанный fail-fast, а не баг.
+
 
 ### Установка и запуск
  
@@ -500,7 +502,7 @@ URL запроса: `GET /events?title=Tech&page=1&pageSize=10`
 
 ### Хранение паролей и токена
 
-Пароль никогда не хранится в открытом виде — `PasswordHasher` считает `SHA256.HashData` от UTF-8 байтов пароля и сохраняет hex-строку в `users.password_hash`. Токен подписывается `HmacSha256` на секрете из `Jwt:Secret` (см. [настройку JWT](#настройка-jwt-аутентификации)) и несёт claims `sub`/`nameid` (Id пользователя), `unique_name` (логин) и `role`.
+Пароль никогда не хранится в открытом виде — `PasswordHasher` хеширует его BCrypt (`workFactor: 12`, соль встроена в хеш) и сохраняет результат в `users.password_hash`; верификация также принимает legacy-хеши SHA-256 (созданные до перехода на BCrypt) для обратной совместимости. Токен подписывается `HmacSha256` на секрете из `Jwt:Secret` (см. [настройку JWT](#настройка-jwt-аутентификации-и-подключения-к-postgresql)) и несёт claims `sub`/`nameid` (Id пользователя), `unique_name` (логин) и `role`.
 
 При неверном логине или пароле `POST /auth/login` возвращает одинаковое сообщение независимо от причины — это защита от перебора существующих логинов.
 
@@ -668,7 +670,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Сущность `User` хранит учётные данные и роль, создаётся через фабричный метод `Create`, а не публичный конструктор:
 * `Id` (`Guid`) — уникальный идентификатор пользователя.
 * `Login` (`string`) — логин, уникален в пределах системы (уникальный индекс в БД).
-* `PasswordHash` (`string`) — хеш пароля (SHA-256), пароль в открытом виде нигде не хранится.
+* `PasswordHash` (`string`) — хеш пароля (BCrypt), пароль в открытом виде нигде не хранится.
 * `Role` (`UserRole`) — роль пользователя: `User` или `Admin`.
 
 ### 📦 Модель данных бронирования (Booking)
