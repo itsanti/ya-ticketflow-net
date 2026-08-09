@@ -15,8 +15,7 @@ namespace TicketFlow.Infrastructure.Persistence.Migrations
                 name: "user_id",
                 table: "bookings",
                 type: "uuid",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+                nullable: true);
 
             migrationBuilder.CreateTable(
                 name: "users",
@@ -31,6 +30,29 @@ namespace TicketFlow.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_users", x => x.id);
                 });
+
+            migrationBuilder.InsertData(
+                table: "users",
+                columns: ["id", "login", "password_hash", "role"],
+                values: new object[]
+                {
+                    new Guid("11111111-1111-1111-1111-111111111111"),
+                    "legacy-system",
+                    "!",
+                    "User"
+                });
+
+            migrationBuilder.Sql(
+                "UPDATE bookings SET user_id = '11111111-1111-1111-1111-111111111111' WHERE user_id IS NULL;");
+
+            migrationBuilder.AlterColumn<Guid>(
+                name: "user_id",
+                table: "bookings",
+                type: "uuid",
+                nullable: false,
+                oldClrType: typeof(Guid),
+                oldType: "uuid",
+                oldNullable: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_bookings_user_id",
