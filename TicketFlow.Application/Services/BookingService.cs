@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using TicketFlow.Application.Abstractions;
+using TicketFlow.Application.Concurrency;
 using TicketFlow.Application.DTOs.Bookings;
 using TicketFlow.Application.Options;
 using TicketFlow.Domain.Entities;
@@ -11,57 +12,51 @@ namespace TicketFlow.Application.Services
     public class BookingService(
         IEventRepository eventRepo,
         IBookingRepository bookingRepo,
-        IOptions<BookingSettings> bookingSettings
+        IOptions<BookingSettings> bookingSettings,
+        KeyedAsyncLock eventLocks
         ) : IBookingService
     {
         private readonly IEventRepository _eventRepo = eventRepo;
         private readonly IBookingRepository _bookingRepo = bookingRepo;
         private readonly int _maxActiveBookingsPerUser = bookingSettings.Value.MaxActiveBookingsPerUser;
-
-        private static readonly SemaphoreSlim _bookingSemaphore = new(1, 1);
+        private readonly KeyedAsyncLock _eventLocks = eventLocks;
 
         public async Task<BookingResponseDto> CreateBookingAsync(Guid eventId, Guid userId)
         {
-            await _bookingSemaphore.WaitAsync();
-            try
+            await using var eventLock = await _eventLocks.AcquireAsync(eventId);
+
+            var eventItem = await _eventRepo.GetByIdAsync(eventId);
+
+            if (eventItem == null)
             {
-                var eventItem = await _eventRepo.GetByIdAsync(eventId);
-
-                if (eventItem == null)
-                {
-                    throw new NotFoundException($"Cannot create booking. Event with ID {eventId} not found.");
-                }
-
-                if (eventItem.StartAt <= DateTime.UtcNow)
-                {
-                    throw new EventAlreadyStartedException($"Event with ID {eventId} already started.");
-                }
-
-                int count = await _bookingRepo.CountActiveBookingsByUserAsync(userId);
-
-                if (count >= _maxActiveBookingsPerUser)
-                {
-                    throw new BookingLimitExceededException(
-                        $"Booking limit exceeded: {_maxActiveBookingsPerUser} active bookings per user.");
-                }
-
-                bool ok = eventItem.TryReserveSeats();
-                if (!ok)
-                {
-                    throw new NoAvailableSeatsException($"Cannot create booking. No available seats for event with ID {eventId}.");
-                }
-
-                var booking = new Booking(eventId, userId);
-
-                await _bookingRepo.AddAsync(booking);
-                await _bookingRepo.SaveChangesAsync();
-
-                return MapToDto(booking);
+                throw new NotFoundException($"Cannot create booking. Event with ID {eventId} not found.");
             }
-            finally
+
+            if (eventItem.StartAt <= DateTime.UtcNow)
             {
-                _bookingSemaphore.Release();
+                throw new EventAlreadyStartedException($"Event with ID {eventId} already started.");
             }
+
+            int count = await _bookingRepo.CountActiveBookingsByUserAsync(userId);
+
+            if (count >= _maxActiveBookingsPerUser)
+            {
+                throw new BookingLimitExceededException(
+                    $"Booking limit exceeded: {_maxActiveBookingsPerUser} active bookings per user.");
+            }
+
+            bool ok = eventItem.TryReserveSeats();
+            if (!ok)
+            {
+                throw new NoAvailableSeatsException($"Cannot create booking. No available seats for event with ID {eventId}.");
+            }
+
+            var booking = new Booking(eventId, userId);
+
+            await _bookingRepo.AddAsync(booking);
+            await _bookingRepo.SaveChangesAsync();
+
+            return MapToDto(booking);
         }
 
         public async Task<BookingResponseDto> GetBookingByIdAsync(Guid bookingId, Guid userId, UserRole role)
@@ -105,6 +100,8 @@ namespace TicketFlow.Application.Services
             {
                 throw new ForbiddenException("You can not cancel other user booking.");
             }
+
+            await using var eventLock = await _eventLocks.AcquireAsync(booking.EventId);
 
             var eventItem = await _eventRepo.GetByIdAsync(booking.EventId);
 

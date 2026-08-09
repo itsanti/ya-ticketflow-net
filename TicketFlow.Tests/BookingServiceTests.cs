@@ -256,6 +256,51 @@ namespace TicketFlow.Tests
         }
 
         [Fact]
+        public async Task CreateBookingAsync_ShouldPreventOverbooking_ForEachEvent_UnderConcurrentMixedLoad()
+        {
+            using var env = TestHelpers.Create();
+
+            var eventA = TestHelpers.CreateTestEvent(3);
+            var eventB = TestHelpers.CreateTestEvent(3);
+
+            env.SeedEvent(eventA);
+            env.SeedEvent(eventB);
+
+            var tasks = Enumerable.Range(0, 20)
+                .Select(i => Task.Run(async () =>
+                {
+                    using var requestScope = env.CreateScope();
+
+                    var bookingService = requestScope.ServiceProvider.GetRequiredService<IBookingService>();
+                    var targetEventId = i % 2 == 0 ? eventA.Id : eventB.Id;
+
+                    try
+                    {
+                        var booking = await bookingService.CreateBookingAsync(targetEventId, Guid.NewGuid());
+                        return booking.Id;
+                    }
+                    catch (NoAvailableSeatsException)
+                    {
+                        return Guid.Empty;
+                    }
+                }));
+
+            var results = await Task.WhenAll(tasks);
+
+            var successfulBookingIds = results.Where(id => id != Guid.Empty).ToList();
+
+            var updatedEventA = env.FindEvent(eventA.Id);
+            var updatedEventB = env.FindEvent(eventB.Id);
+
+            Assert.NotNull(updatedEventA);
+            Assert.NotNull(updatedEventB);
+            Assert.Equal(0, updatedEventA.AvailableSeats);
+            Assert.Equal(0, updatedEventB.AvailableSeats);
+            Assert.Equal(6, successfulBookingIds.Count);
+            Assert.Equal(6, successfulBookingIds.Distinct().Count());
+        }
+
+        [Fact]
         public async Task CreateBookingAsync_ShouldGenerateUniqueIds_UnderConcurrentLoad()
         {
             using var env = TestHelpers.Create();
