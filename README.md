@@ -37,6 +37,7 @@
 │   │   └── Pagination/                 # PaginationParams, PaginatedResult
 │   ├── Services/                       # Use cases (IEventService/EventService, IBookingService/BookingService, IUserService/UserService)
 │   │   └── Background/                 # Фоновая обработка заявок (BookingProcessingBackgroundService)
+│   ├── Concurrency/                    # KeyedAsyncLock — per-key async-лок (используется BookingService)
 │   └── DependencyInjection/            # AddApplicationServices
 ├── TicketFlow.Infrastructure/          # Инфраструктурный слой (зависит от Application и Domain)
 │   ├── Persistence/
@@ -129,8 +130,8 @@ builder.Services.AddPresentationServices(builder.Configuration);
 - [x]  Фоновый процессор заявок на базе `BackgroundService` с обработкой отмены (`CancellationToken`)
 - [x]  Валидация бронирований на уровне сервиса (проверка существования и удаления событий)
 - [x] Переход к **Rich Domain Model**: инкапсуляция логики резервирования и возврата мест внутри сущности `Event`
-- [x] Синхронизация критических секций: защита от овербукинга с помощью `SemaphoreSlim` при конкурентном создании брони
-- [x] Параллельная обработка фоновых задач: использование `Task.WhenAll` и `SemaphoreSlim` для потокобезопасного конкурентного обновления хранилища
+- [x] Синхронизация критических секций: защита от овербукинга с помощью `KeyedAsyncLock` (per-event async-лок на `SemaphoreSlim` внутри) при конкурентном создании и отмене брони
+- [x] Параллельная обработка фоновых задач: `BookingProcessingBackgroundService` обрабатывает `Pending`-брони параллельно через `Task.WhenAll`, каждая — в своём scope и со своим `AppDbContext`, без общего изменяемого состояния
 - [x] Тестирование конкурентности: написаны юнит-тесты, симулирующие одновременные параллельные запросы к сервису для проверки потокобезопасности
 - [x] Хранение данных в PostgreSQL
 - [x] Работа с базой данных через Entity Framework Core
@@ -397,6 +398,8 @@ dotnet ef database update \
 
 `RegisterUserDto` не содержит поля `role` — эндпоинт всегда создаёт пользователя с ролью `User`, тело запроса не может повлиять на роль (лишние поля в JSON, включая `"role"`, игнорируются биндером). Это осознанное ограничение: без него любой клиент мог бы зарегистрироваться сразу как `Admin`. Успешная регистрация возвращает `204 No Content`. Как завести администратора — см. [ролевую модель](#ролевая-модель).
 
+Пароль (`RegisterUserDto`/`LoginUserDto`) валидируется атрибутом `[StringLength(64, MinimumLength = 8)]` — от 8 до 64 символов, иначе `400 Bad Request` ещё на уровне модели, до вызова сервиса.
+
 ### Пример запроса (POST /auth/login)
 
 ```json
@@ -511,7 +514,7 @@ dotnet run --project TicketFlow.Presentation -- create-admin <login> <password>
 
 Пароль никогда не хранится в открытом виде — `PasswordHasher` хеширует его BCrypt (`workFactor: 12`, соль встроена в хеш) и сохраняет результат в `users.password_hash`; верификация также принимает legacy-хеши SHA-256 (созданные до перехода на BCrypt) для обратной совместимости. Токен подписывается `HmacSha256` на секрете из `Jwt:Secret` (см. [настройку JWT](#настройка-jwt-аутентификации-и-подключения-к-postgresql)) и несёт claims `nameid` (Id пользователя, `ClaimTypes.NameIdentifier`), `unique_name` (логин, `ClaimTypes.Name`), `role` (`ClaimTypes.Role`) и `jti` (уникальный идентификатор токена).
 
-При неверном логине или пароле `POST /auth/login` возвращает одинаковое сообщение независимо от причины — это защита от перебора существующих логинов.
+При неверном логине или пароле `POST /auth/login` возвращает одинаковое сообщение независимо от причины — это защита от перебора существующих логинов. Дополнительно от timing-атаки (когда факт существования логина вычисляется по времени ответа): если логин не найден, `UserService.LoginAsync` всё равно выполняет `IPasswordHasher.Verify` против фиктивного bcrypt-хеша — время ответа не выдаёт, существует аккаунт или нет.
 
 ---
 
@@ -583,8 +586,9 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Основные наборы unit-тестов:
 
 - `EventServiceTests` — проверка бизнес-логики управления событиями: создание, обновление, удаление, получение по ID, фильтрация, пагинация и валидация дат.
-- `BookingServiceTests` — проверка сценариев бронирования: создание заявки, проверку отсутствующих событий, sold out-сценарии, защиту от овербукинга, доменные правила — запрет брони уже начавшегося события, лимит активных броней и его независимость между пользователями (`CreateBookingAsync_Should*`), а также отмену брони — успешную (владелец, до начала события), `ForbiddenException` для чужой брони, `EventAlreadyStartedException` при отмене после начала события (`CancelBookingAsync_Should*`) и `ForbiddenException` при просмотре чужой брони не-владельцем (`GetBookingByIdAsync_Should*`).
-- `UserServiceTests` — `RegisterAsync`: дубликат логина → `ValidationException`, роль всегда создаётся как `User` независимо от входных данных; `LoginAsync`: несуществующий логин и неверный пароль → `UnauthorizedException`, валидные данные → токен.
+- `BookingServiceTests` — проверка сценариев бронирования: создание заявки, проверку отсутствующих событий, sold out-сценарии, защиту от овербукинга под конкурентной нагрузкой как на одном событии, так и на нескольких разных событиях одновременно (проверка, что `KeyedAsyncLock` не блокирует чужие события), доменные правила — запрет брони уже начавшегося события, лимит активных броней и его независимость между пользователями (`CreateBookingAsync_Should*`), а также отмену брони — успешную, с проверкой что `AvailableSeats` события возвращается (владелец, до начала события), `ForbiddenException` для чужой брони, `EventAlreadyStartedException` при отмене после начала события (`CancelBookingAsync_Should*`) и `ForbiddenException` при просмотре чужой брони не-владельцем (`GetBookingByIdAsync_Should*`).
+- `KeyedAsyncLockTests` — изолированные тесты самого лока: сериализация конкурентных вызовов на одном ключе, отсутствие блокировки между разными ключами, удаление записи из внутреннего словаря после последнего `DisposeAsync()` (проверка отсутствия утечки памяти).
+- `UserServiceTests` — `RegisterAsync`: дубликат логина → `ValidationException`, роль всегда создаётся как `User` независимо от входных данных; `LoginAsync`: несуществующий логин и неверный пароль → `UnauthorizedException` с одинаковым сообщением, валидные данные → токен; несуществующий логин всё равно вызывает `IPasswordHasher.Verify` (с фиктивным хешем) — защита от timing-атаки на перебор логинов.
 - `PasswordHasherTests` — формат хеша (BCrypt), разная соль на одинаковый пароль, верификация правильного/неправильного пароля для нового формата и для legacy SHA-256 (обратная совместимость).
 - `JwtTokenGeneratorTests` — состав claims токена (`nameid`/`unique_name`/`role`/`jti`), issuer/audience, уникальность `jti`, успешная и неуспешная (чужой секрет) валидация через `JwtSecurityTokenHandler`.
 - `BookingProcessingBackgroundServiceTests` — проверка фоновой обработки заявок: перевод Pending в Confirmed или Rejected, заполнение ProcessedAt, обработка отмены через CancellationToken.
@@ -599,13 +603,14 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 3. Применяют EF Core-миграции через `Database.MigrateAsync()`.
 4. Проверяют создание таблиц `events`, `bookings`, `users` и `__EFMigrationsHistory`.
 5. Проверяют внешний ключ `bookings.event_id → events.id`.
-6. Покрывают методы `EventRepository`.
-7. Покрывают методы `BookingRepository`, в том числе с реальным `bookings.user_id → users.id` (брони в тестах создаются только для существующего пользователя — колонка обязательна и защищена внешним ключом).
-8. Покрывают методы `UserRepository` (`UserRepositoryTests`): успешное добавление, `GetByLoginAsync` для существующего/несуществующего логина, нарушение уникального индекса логина — `DbUpdateException` с `PostgresException.SqlState == "23505"`.
-9. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
-10. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
-11. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
-12. Покрывают HTTP-уровень (`AuthorizationHttpTests`, через `CustomWebApplicationFactory`): запрос без токена на `[Authorize]`-маршрут → 401; `POST /events` от роли `User` → 403; неверный пароль на `/auth/login` → 401; отмена чужой брони → 403; попытка передать `"role": "Admin"` сырым JSON в `/auth/register` игнорируется (роль всё равно `User`).
+6. Проверяют backfill в миграции `AddUsersAndBookingOwnership`: `MigrationTests` откатывает БД до `InitialCreate`, вставляет "legacy"-бронь без `user_id`, применяет миграцию заново и проверяет, что `bookings.user_id` заполнился sentinel-пользователем `legacy-system`.
+7. Покрывают методы `EventRepository`.
+8. Покрывают методы `BookingRepository`, в том числе с реальным `bookings.user_id → users.id` (брони в тестах создаются только для существующего пользователя — колонка обязательна и защищена внешним ключом).
+9. Покрывают методы `UserRepository` (`UserRepositoryTests`): успешное добавление, `GetByLoginAsync` для существующего/несуществующего логина, нарушение уникального индекса логина — `DbUpdateException` с `PostgresException.SqlState == "23505"`.
+10. Проверяют работу фильтрации, пагинации, добавления, обновления, удаления и выборки данных на реальной PostgreSQL.
+11. Покрывают сквозной сценарий бронирования: `BookingServiceTests` вызывает `IBookingService` поверх настоящих репозиториев и проверяет, что бронь сохранена, а место у события зарезервировано одним `SaveChangesAsync`.
+12. Покрывают фоновую обработку: `BookingProcessingBackgroundServiceTests` запускает воркер против реальной базы и проверяет, что статус `Confirmed` действительно сохраняется.
+13. Покрывают HTTP-уровень (`AuthorizationHttpTests`, через `CustomWebApplicationFactory`): запрос без токена на `[Authorize]`-маршрут → 401; `POST /events` от роли `User` → 403; неверный пароль на `/auth/login` → 401; отмена чужой брони → 403; попытка передать `"role": "Admin"` сырым JSON в `/auth/register` игнорируется (роль всё равно `User`).
 
 Окружение для сервисных тестов собирает `PostgreSqlTestFixture.CreateServiceProvider()` — он вызывает `AddInfrastructureServices(connectionString, configuration)` и `AddApplicationServices(configuration)`, то есть повторяет composition root приложения. Поскольку у тестового проекта нет `appsettings.json`, `configuration` собирается в памяти (`ConfigurationBuilder().AddInMemoryCollection(...)`) с тестовыми значениями секции `Jwt`. HTTP-тесты используют отдельный `CustomWebApplicationFactory`: запускают приложение в окружении `Development` (чтобы `Jwt:Secret` подхватился из `appsettings.Development.json` ещё до применения тестовых оверрайдов конфигурации) и подменяют только `DbContextOptions<AppDbContext>` на тот же Testcontainers-контейнер.
 
@@ -727,11 +732,13 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 
 ## 🔒 Потокобезопасность и многопоточность
 
-Для защиты от овербукинга при конкурентном создании бронирований используется `static SemaphoreSlim` в `BookingService`.
+Для защиты от овербукинга при конкурентном создании и отмене бронирований используется `KeyedAsyncLock` (`Application/Concurrency/KeyedAsyncLock.cs`) — per-key асинхронный мьютекс, лочит по `eventId`, а не глобально.
 
-`BookingService` зарегистрирован как scoped-сервис, поэтому обычный instance-семафор защищал бы только один экземпляр сервиса. `static SemaphoreSlim` синхронизирует критическую секцию между разными экземплярами `BookingService` внутри одного процесса приложения.
+`BookingService` зарегистрирован как scoped-сервис, поэтому обычный instance-семафор защищал бы только один экземпляр сервиса. `KeyedAsyncLock` зарегистрирован как **singleton** (`AddApplicationServices`) и внедряется в `BookingService` через конструктор — так лок остаётся общим для всех scoped-экземпляров сервиса внутри одного процесса приложения.
 
-Критическая секция включает:
+В отличие от прежнего `static SemaphoreSlim` (единая очередь на всё приложение сразу), `KeyedAsyncLock` синхронизирует только запросы к одному и тому же событию: `AcquireAsync(eventId)` возвращает `IAsyncDisposable`-хендл на конкретный ключ, а конкурентные брони на разные события выполняются параллельно, не блокируя друг друга. Реализация — `ConcurrentDictionary<Guid, Entry>` со счётчиком ссылок на каждый ключ: как только по ключу не осталось ни держателей, ни ожидающих, запись удаляется из словаря — лок не течёт по памяти при большом количестве разных событий.
+
+Критическая секция при создании брони (`CreateBookingAsync`, лочится по `eventId` из параметра) включает:
 
 1. загрузку события из базы данных;
 2. проверку, что событие ещё не началось;
@@ -742,6 +749,8 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 7. сохранение изменений через `SaveChangesAsync()`.
 
 Так как `AppDbContext` отслеживает и изменённое событие, и новую бронь, один вызов `SaveChangesAsync()` сохраняет оба изменения.
+
+При отмене брони (`CancelBookingAsync`, лочится по `booking.EventId`) тот же лок берётся вокруг проверки события, `booking.Cancel()`, `eventItem.ReleaseSeats()` и `SaveChangesAsync()` — это не даёт конкурентным создании/отмене брони на одном и том же событии гоняться за `AvailableSeats`.
 
 `BookingProcessingBackgroundService` не хранит общий `DbContext` и не использует общий in-memory store. Для работы со scoped-зависимостями он использует `IServiceScopeFactory`: сначала создаёт scope для получения списка `Pending`-бронирований через `IBookingRepository`, затем отдельный scope для обработки каждой брони через `IBookingRepository` и `IEventRepository`.
 
@@ -816,7 +825,7 @@ var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>()
 Представим ситуацию:
 1. На мероприятие осталось ровно **5 мест**.
 2. **20 пользователей** одновременно нажимают кнопку «Забронировать».
-3. Благодаря использованию конструкции `SemaphoreSlim` в `BookingService`, запросы выстраиваются в строгую очередь на уровне процессорных потоков.
+3. Благодаря `KeyedAsyncLock` в `BookingService` запросы на это событие выстраиваются в строгую очередь (запросы на другие события при этом не блокируются и обрабатываются параллельно).
 4. Первые **5 потоков** (если доступно 5 мест) успешно вызывают `TryReserveSeats()`, уменьшают счетчик до 0 и получают ответ `202 Accepted`. Их брони уходят в статус `Pending`.
 5. Остальные **15 запросов** мгновенно получают отказ на уровне бизнес-логики модели, и API возвращает им `409 Conflict`.
 6. Фоновый сервис параллельно переводит эти 5 успешных броней в статус `Confirmed`, создавая отдельный scope и отдельный `AppDbContext` для обработки каждой брони.
