@@ -44,7 +44,7 @@ namespace TicketFlow.Application.Services
 
             if (user == null || !_hasher.Verify(password, user.PasswordHash))
             {
-                throw new NotFoundException(InvalidCredentialsMessage);
+                throw new UnauthorizedException(InvalidCredentialsMessage);
             }
 
             return _jwtGenerator.GenerateToken(user.Id, user.Login, user.Role);

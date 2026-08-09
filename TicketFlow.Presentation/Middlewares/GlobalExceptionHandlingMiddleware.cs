@@ -68,6 +68,7 @@ namespace TicketFlow.Presentation.Middlewares
                 NoAvailableSeatsException => StatusCodes.Status409Conflict,
                 EventAlreadyStartedException => StatusCodes.Status400BadRequest,
                 BookingLimitExceededException => StatusCodes.Status409Conflict,
+                UnauthorizedException => StatusCodes.Status401Unauthorized,
                 ForbiddenException => StatusCodes.Status403Forbidden,
                 InvalidOperationDomainException => StatusCodes.Status400BadRequest,
                 DomainException => StatusCodes.Status400BadRequest,
