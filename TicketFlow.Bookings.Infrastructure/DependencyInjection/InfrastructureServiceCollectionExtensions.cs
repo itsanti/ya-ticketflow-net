@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.Bookings.Application.Abstractions;
+using TicketFlow.Bookings.Infrastructure.Messaging;
 using TicketFlow.Bookings.Infrastructure.Persistence;
 using TicketFlow.Bookings.Infrastructure.Repositories;
 
@@ -18,6 +19,9 @@ namespace TicketFlow.Bookings.Infrastructure.DependencyInjection
                 options.UseNpgsql(connectionString));
 
             services.AddScoped<IBookingRepository, BookingRepository>();
+
+            services.Configure<KafkaOptions>(configuration.GetSection(KafkaOptions.SectionName));
+            services.AddSingleton<IBookingConfirmedPublisher, KafkaBookingConfirmedPublisher>();
 
             return services;
         }

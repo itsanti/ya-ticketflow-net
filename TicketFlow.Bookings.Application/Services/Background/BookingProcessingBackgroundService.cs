@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TicketFlow.Bookings.Application.Abstractions;
 using TicketFlow.Bookings.Domain.Enums;
+using TicketFlow.Contracts;
 
 namespace TicketFlow.Bookings.Application.Services.Background
 {
@@ -68,6 +69,8 @@ namespace TicketFlow.Bookings.Application.Services.Background
                 using var scope = _scopeFactory.CreateScope();
                 var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
 
+                var publisher = scope.ServiceProvider.GetRequiredService<IBookingConfirmedPublisher>();
+
                 var booking = await bookingRepository.GetByIdAsync(bookingId, stoppingToken);
                 if (booking == null || booking.Status != BookingStatus.Pending)
                     return;
@@ -75,7 +78,16 @@ namespace TicketFlow.Bookings.Application.Services.Background
                 booking.Confirm();
                 await bookingRepository.SaveChangesAsync(stoppingToken);
 
-                // TODO(Этап 4): опубликовать BookingConfirmed в Kafka.
+                try
+                {
+                    var confirmedEvent = new BookingConfirmedEvent(bookingId, booking.EventId, booking.UserId, 1, booking.ProcessedAt!.Value);
+                    await publisher.PublishAsync(confirmedEvent, stoppingToken);
+                }
+                catch (Exception publishEx)
+                {
+                    // Бронь уже подтверждена и сохранена — сбой публикации не должен её откатывать.
+                    _logger.LogError(publishEx, "Failed to publish BookingConfirmed event for booking {BookingId}", bookingId);
+                }
 
                 _logger.LogInformation("Successfully processed booking with ID {BookingId}", booking.Id);
             }

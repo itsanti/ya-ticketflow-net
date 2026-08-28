@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TicketFlow.Bookings.Domain\TicketFlow.Bookings.Domain.csproj" />
+    <ProjectReference Include="..\TicketFlow.Contracts\TicketFlow.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
