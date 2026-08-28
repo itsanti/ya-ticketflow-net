@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TicketFlow.Events.Application.Abstractions;
+using TicketFlow.Events.Infrastructure.Messaging;
 using TicketFlow.Events.Infrastructure.Persistence;
 using TicketFlow.Events.Infrastructure.Repositories;
 
@@ -18,6 +19,10 @@ namespace TicketFlow.Events.Infrastructure.DependencyInjection
                 options.UseNpgsql(connectionString));
 
             services.AddScoped<IEventRepository, EventRepository>();
+
+            services.Configure<KafkaOptions>(configuration.GetSection(KafkaOptions.SectionName));
+            services.AddHostedService<KafkaTopicInitializer>();
+            services.AddHostedService<BookingConfirmedConsumer>();
 
             return services;
         }
