@@ -3,6 +3,7 @@
   <Project Path="TicketFlow.Bookings.Domain/TicketFlow.Bookings.Domain.csproj" />
   <Project Path="TicketFlow.Bookings.Infrastructure/TicketFlow.Bookings.Infrastructure.csproj" />
   <Project Path="TicketFlow.Bookings.Presentation/TicketFlow.Bookings.Presentation.csproj" />
+  <Project Path="TicketFlow.Contracts/TicketFlow.Contracts.csproj" />
   <Project Path="TicketFlow.Domain/TicketFlow.Domain.csproj" />
   <Project Path="TicketFlow.Application/TicketFlow.Application.csproj" />
   <Project Path="TicketFlow.Events.Application/TicketFlow.Events.Application.csproj" />
