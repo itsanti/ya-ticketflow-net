@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Events.Application.DTOs;
 using TicketFlow.Events.Application.DTOs.Pagination;
@@ -28,7 +29,7 @@ namespace TicketFlow.Events.Presentation.Controllers
             return Ok(await _eventService.GetEventAsync(id));
         }
 
-        // TODO(Этап 6): вернуть [Authorize(Roles = "Admin")] после подключения JWT-аутентификации в этом сервисе
+        [Authorize(Roles = "Admin")]
         [HttpPost]
         public async Task<ActionResult<Guid>> CreateEvent(CreateEventDto dto)
         {
@@ -36,14 +37,14 @@ namespace TicketFlow.Events.Presentation.Controllers
             return CreatedAtAction(nameof(GetEvent), new { id = newEventId }, newEventId);
         }
 
-        // TODO(Этап 6): вернуть [Authorize(Roles = "Admin")] после подключения JWT-аутентификации в этом сервисе
+        [Authorize(Roles = "Admin")]
         [HttpPut("{id}")]
         public async Task<ActionResult<EventInfoDto>> UpdateEvent(Guid id, UpdateEventDto dto)
         {
             return Ok(await _eventService.UpdateEventAsync(id, dto));
         }
 
-        // TODO(Этап 6): вернуть [Authorize(Roles = "Admin")] после подключения JWT-аутентификации в этом сервисе
+        [Authorize(Roles = "Admin")]
         [HttpDelete("{id}")]
         public async Task<ActionResult> RemoveEvent(Guid id)
         {

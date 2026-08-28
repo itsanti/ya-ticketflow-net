@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketFlow.Bookings.Application.DTOs;
 using TicketFlow.Bookings.Application.Services;
@@ -9,8 +10,7 @@ namespace TicketFlow.Bookings.Presentation.Controllers
 {
     [ApiController]
     [Route("bookings")]
-    // TODO(Этап 6): вернуть [Authorize] после подключения JWT-аутентификации в этом сервисе.
-    // До этого момента GetUserId() всегда бросает UnauthorizedException — claims брать неоткуда.
+    [Authorize]
     public class BookingsController : ControllerBase
     {
         private readonly IBookingService _bookingService;

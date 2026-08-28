@@ -1,5 +1,10 @@
+using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using TicketFlow.Events.Infrastructure.Security;
 
 namespace TicketFlow.Events.Presentation.DependencyInjection
 {
@@ -46,11 +51,53 @@ namespace TicketFlow.Events.Presentation.DependencyInjection
                 };
             });
 
-            // TODO(Этап 6): AddAuthentication().AddJwtBearer(...) + AddAuthorization() —
-            // проверка того же JWT, что выдаёт Users (общие Secret/Issuer/Audience).
+            services.AddAuthenticationServices(configuration);
+
             services.AddOpenApi();
             services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen();
+            services.AddSwaggerGen(options =>
+            {
+                options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Введите JWT-токен в формате: Bearer {токен}"
+                });
+
+                options.AddSecurityRequirement(document => new()
+                {
+                    [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+                });
+            });
+
+            return services;
+        }
+
+        private static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration)
+        {
+            var jwtSection = configuration.GetSection(JwtOptions.SectionName);
+            var jwtOptions = jwtSection.Get<JwtOptions>()
+                ?? throw new InvalidOperationException($"Configuration section '{JwtOptions.SectionName}' is missing.");
+
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret))
+                    };
+                });
+
+            services.AddAuthorization();
 
             return services;
         }

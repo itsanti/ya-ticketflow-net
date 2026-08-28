@@ -34,6 +34,8 @@ namespace TicketFlow.Bookings.Presentation
             }
 
             app.UseHttpsRedirection();
+            app.UseAuthentication();
+            app.UseAuthorization();
             app.MapControllers();
 
             await app.RunAsync();
