@@ -9,6 +9,8 @@ namespace TicketFlow.Events.Application.Abstractions
         Task<Event?> GetByIdAsync(Guid id, CancellationToken ct = default);
         Task AddAsync(Event eventItem, CancellationToken ct = default);
         void Remove(Event eventItem);
+        Task<bool> IsBookingProcessedAsync(Guid bookingId, CancellationToken ct = default);
+        Task MarkBookingProcessedAsync(Guid bookingId, DateTime processedAtUtc, CancellationToken ct = default);
         Task SaveChangesAsync(CancellationToken ct = default);
     }
 }

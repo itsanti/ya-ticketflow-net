@@ -9,6 +9,8 @@ namespace TicketFlow.Events.Infrastructure.Persistence
 
         public DbSet<Event> Events => Set<Event>();
 
+        public DbSet<ProcessedBookingConfirmation> ProcessedBookingConfirmations => Set<ProcessedBookingConfirmation>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(EventsDbContext).Assembly);

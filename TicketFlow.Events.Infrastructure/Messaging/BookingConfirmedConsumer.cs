@@ -89,6 +89,13 @@ namespace TicketFlow.Events.Infrastructure.Messaging
                 using var scope = scopeFactory.CreateScope();
                 var eventRepository = scope.ServiceProvider.GetRequiredService<IEventRepository>();
 
+                if (await eventRepository.IsBookingProcessedAsync(bookingConfirmedEvent.BookingId, ct))
+                {
+                    logger.LogInformation("Booking {BookingId} already processed — duplicate message skipped.",
+                        bookingConfirmedEvent.BookingId);
+                    return;
+                }
+
                 var eventItem = await eventRepository.GetByIdAsync(bookingConfirmedEvent.EventId, ct);
 
                 if (eventItem == null)
@@ -105,6 +112,8 @@ namespace TicketFlow.Events.Infrastructure.Messaging
                     return;
                 }
 
+                // Место и запись об обработке сохраняются в одной транзакции SaveChangesAsync.
+                await eventRepository.MarkBookingProcessedAsync(bookingConfirmedEvent.BookingId, DateTime.UtcNow, ct);
                 await eventRepository.SaveChangesAsync(ct);
 
                 logger.LogInformation("Reserved {SeatsCount} seat(s) for event {EventId} from booking {BookingId}.",

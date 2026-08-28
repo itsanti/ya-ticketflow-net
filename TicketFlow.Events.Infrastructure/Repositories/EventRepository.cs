@@ -63,6 +63,18 @@ namespace TicketFlow.Events.Infrastructure.Repositories
             _context.Events.Remove(eventItem);
         }
 
+        public async Task<bool> IsBookingProcessedAsync(Guid bookingId, CancellationToken ct = default)
+        {
+            return await _context.ProcessedBookingConfirmations
+                .AnyAsync(p => p.BookingId == bookingId, ct);
+        }
+
+        public async Task MarkBookingProcessedAsync(Guid bookingId, DateTime processedAtUtc, CancellationToken ct = default)
+        {
+            await _context.ProcessedBookingConfirmations.AddAsync(
+                ProcessedBookingConfirmation.Create(bookingId, processedAtUtc), ct);
+        }
+
         public async Task SaveChangesAsync(CancellationToken ct = default)
         {
             await _context.SaveChangesAsync(ct);
