@@ -1,6 +1,8 @@
+using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using TicketFlow.Bookings.Application.Abstractions;
 using TicketFlow.Bookings.Infrastructure.Messaging;
 using TicketFlow.Bookings.Infrastructure.Persistence;
@@ -21,6 +23,14 @@ namespace TicketFlow.Bookings.Infrastructure.DependencyInjection
             services.AddScoped<IBookingRepository, BookingRepository>();
 
             services.Configure<KafkaOptions>(configuration.GetSection(KafkaOptions.SectionName));
+
+            services.AddSingleton<IProducer<string, string>>(sp =>
+            {
+                var kafkaOptions = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
+                var config = new ProducerConfig { BootstrapServers = kafkaOptions.BootstrapServers };
+
+                return new ProducerBuilder<string, string>(config).Build();
+            });
             services.AddSingleton<IBookingConfirmedPublisher, KafkaBookingConfirmedPublisher>();
 
             return services;

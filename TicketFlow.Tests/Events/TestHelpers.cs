@@ -16,6 +16,8 @@ namespace TicketFlow.Tests.Events
 
         public Mock<IEventRepository> EventRepository { get; } = new();
 
+        private readonly HashSet<Guid> _processedBookingIds = [];
+
         public TestEnvironment()
         {
             SetupEventRepository();
@@ -79,6 +81,27 @@ namespace TicketFlow.Tests.Events
 
             EventRepository
                 .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            EventRepository
+                .Setup(r => r.IsBookingProcessedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid bookingId, CancellationToken _) =>
+                {
+                    lock (_sync)
+                    {
+                        return _processedBookingIds.Contains(bookingId);
+                    }
+                });
+
+            EventRepository
+                .Setup(r => r.MarkBookingProcessedAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+                .Callback((Guid bookingId, DateTime _, CancellationToken _) =>
+                {
+                    lock (_sync)
+                    {
+                        _processedBookingIds.Add(bookingId);
+                    }
+                })
                 .Returns(Task.CompletedTask);
 
             // Повторяет семантику EventRepository.GetPagedAsync: фильтрация, сортировка, пагинация.

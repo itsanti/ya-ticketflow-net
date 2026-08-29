@@ -63,7 +63,9 @@ namespace TicketFlow.Events.Infrastructure.Messaging
             }
         }
 
-        private async Task HandleMessageAsync(string payload, CancellationToken ct)
+        // internal — чтобы юнит-тесты могли вызывать обработку сообщения напрямую,
+        // без поднятия реального Kafka-консьюмера (см. InternalsVisibleTo в csproj).
+        internal async Task HandleMessageAsync(string payload, CancellationToken ct)
         {
             BookingConfirmedEvent? bookingConfirmedEvent;
 

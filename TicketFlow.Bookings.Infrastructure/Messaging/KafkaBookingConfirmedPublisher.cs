@@ -1,5 +1,4 @@
 using Confluent.Kafka;
-using Microsoft.Extensions.Options;
 using System.Text.Json;
 using TicketFlow.Bookings.Application.Abstractions;
 using TicketFlow.Contracts;
@@ -10,14 +9,9 @@ namespace TicketFlow.Bookings.Infrastructure.Messaging
     {
         private readonly IProducer<string, string> _producer;
 
-        public KafkaBookingConfirmedPublisher(IOptions<KafkaOptions> options)
+        public KafkaBookingConfirmedPublisher(IProducer<string, string> producer)
         {
-            var config = new ProducerConfig
-            {
-                BootstrapServers = options.Value.BootstrapServers
-            };
-
-            _producer = new ProducerBuilder<string, string>(config).Build();
+            _producer = producer;
         }
 
         public async Task PublishAsync(BookingConfirmedEvent bookingConfirmedEvent, CancellationToken ct = default)
