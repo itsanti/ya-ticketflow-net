@@ -1,14 +1,12 @@
-﻿using TicketFlow.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using TicketFlow.Infrastructure.Persistence;
-using TicketFlow.Infrastructure.Repositories;
-using TicketFlow.Application.DTOs.Events;
-using TicketFlow.IntegrationTests.Infrastructure;
-using TicketFlow.Domain.Entities;
+using TicketFlow.Events.Application.DTOs;
+using TicketFlow.Events.Domain.Entities;
+using TicketFlow.Events.Infrastructure.Persistence;
+using TicketFlow.Events.Infrastructure.Repositories;
 
-namespace TicketFlow.IntegrationTests.Repositories
+namespace TicketFlow.IntegrationTests.Events
 {
-    [Collection("PostgreSql collection")]
+    [Collection("Events PostgreSql collection")]
     public class EventRepositoryTests
     {
         private readonly PostgreSqlTestFixture _fixture;
@@ -32,13 +30,13 @@ namespace TicketFlow.IntegrationTests.Repositories
                 totalSeats);
         }
 
-        private static async Task StoreEvents(AppDbContext context, params Event[] events)
+        private static async Task StoreEvents(EventsDbContext context, params Event[] events)
         {
             await context.Events.AddRangeAsync(events);
             await context.SaveChangesAsync();
         }
 
-        private async Task<Event> StoreEvent(AppDbContext context)
+        private async Task<Event> StoreEvent(EventsDbContext context)
         {
             var baseDate = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
 

@@ -1,37 +1,29 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using TicketFlow.Application.Abstractions;
-using TicketFlow.Application.DependencyInjection;
-using TicketFlow.Application.DTOs.Events;
-using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
+using TicketFlow.Events.Application.Abstractions;
+using TicketFlow.Events.Application.DependencyInjection;
+using TicketFlow.Events.Application.DTOs;
+using TicketFlow.Events.Domain.Entities;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Events
 {
     internal sealed class TestEnvironment : IDisposable
     {
         private readonly object _sync = new();
         private readonly List<Event> _events = [];
-        private readonly List<Booking> _bookings = [];
 
         public ServiceProvider Provider { get; }
 
         public Mock<IEventRepository> EventRepository { get; } = new();
 
-        public Mock<IBookingRepository> BookingRepository { get; } = new();
-
         public TestEnvironment()
         {
             SetupEventRepository();
-            SetupBookingRepository();
 
             var services = new ServiceCollection();
 
             services.AddSingleton(EventRepository.Object);
-            services.AddSingleton(BookingRepository.Object);
-
-            services.AddApplicationServices(new ConfigurationBuilder().Build());
+            services.AddApplicationServices();
 
             Provider = services.BuildServiceProvider();
         }
@@ -48,14 +40,6 @@ namespace TicketFlow.Tests
             }
         }
 
-        public void SeedBooking(Booking booking)
-        {
-            lock (_sync)
-            {
-                _bookings.Add(booking);
-            }
-        }
-
         public void RemoveEvent(Event eventItem)
         {
             lock (_sync)
@@ -69,22 +53,6 @@ namespace TicketFlow.Tests
             lock (_sync)
             {
                 return _events.FirstOrDefault(e => e.Id == id);
-            }
-        }
-
-        public Booking? FindBooking(Guid id)
-        {
-            lock (_sync)
-            {
-                return _bookings.FirstOrDefault(b => b.Id == id);
-            }
-        }
-
-        public IReadOnlyList<Booking> AllBookings()
-        {
-            lock (_sync)
-            {
-                return _bookings.ToList();
             }
         }
 
@@ -153,50 +121,6 @@ namespace TicketFlow.Tests
                     return ((IReadOnlyList<Event>)items, totalCount);
                 });
         }
-
-        private void SetupBookingRepository()
-        {
-            BookingRepository
-                .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Guid id, CancellationToken _) => FindBooking(id));
-
-            BookingRepository
-                .Setup(r => r.GetByIdAsNoTrackingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Guid id, CancellationToken _) => FindBooking(id));
-
-            BookingRepository
-                .Setup(r => r.AddAsync(It.IsAny<Booking>(), It.IsAny<CancellationToken>()))
-                .Callback((Booking booking, CancellationToken _) => SeedBooking(booking))
-                .Returns(Task.CompletedTask);
-
-            BookingRepository
-                .Setup(r => r.GetPendingIdsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync((CancellationToken _) =>
-                {
-                    lock (_sync)
-                    {
-                        return (IReadOnlyList<Guid>)_bookings
-                            .Where(b => b.Status == BookingStatus.Pending)
-                            .Select(b => b.Id)
-                            .ToList();
-                    }
-                });
-
-            BookingRepository
-                .Setup(r => r.CountActiveBookingsByUserAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Guid userId, CancellationToken _) =>
-                {
-                    lock (_sync)
-                    {
-                        return _bookings.Count(b => b.UserId == userId
-                            && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
-                    }
-                });
-
-            BookingRepository
-                .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
-        }
     }
 
     internal static class TestHelpers
@@ -208,17 +132,6 @@ namespace TicketFlow.Tests
                 "Описание тестового события",
                 DateTime.UtcNow.AddDays(1),
                 DateTime.UtcNow.AddDays(1).AddHours(2),
-                totalSeats
-            );
-        }
-
-        internal static Event CreateStartedTestEvent(int totalSeats)
-        {
-            return Event.Create(
-                "Уже начавшееся событие",
-                "Описание тестового события",
-                DateTime.UtcNow.AddHours(-2),
-                DateTime.UtcNow.AddHours(2),
                 totalSeats
             );
         }

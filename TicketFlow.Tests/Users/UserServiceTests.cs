@@ -1,11 +1,11 @@
 using Moq;
-using TicketFlow.Application.Abstractions;
-using TicketFlow.Application.Services;
-using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
-using TicketFlow.Domain.Exceptions;
+using TicketFlow.Users.Application.Abstractions;
+using TicketFlow.Users.Application.Services;
+using TicketFlow.Users.Domain.Entities;
+using TicketFlow.Users.Domain.Enums;
+using TicketFlow.Users.Domain.Exceptions;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Users
 {
     public class UserServiceTests
     {

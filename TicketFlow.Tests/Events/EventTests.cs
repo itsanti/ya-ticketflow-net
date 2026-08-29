@@ -1,6 +1,6 @@
-﻿using TicketFlow.Domain.Entities;
+using TicketFlow.Events.Domain.Entities;
 
-namespace TicketFlow.Tests.Models
+namespace TicketFlow.Tests.Events
 {
     public class EventTests
     {

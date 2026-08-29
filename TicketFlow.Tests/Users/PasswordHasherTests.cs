@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using TicketFlow.Infrastructure.Security;
+using TicketFlow.Users.Infrastructure.Security;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Users
 {
     public class PasswordHasherTests
     {

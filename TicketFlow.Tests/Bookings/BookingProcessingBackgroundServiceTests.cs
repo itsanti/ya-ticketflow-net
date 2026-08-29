@@ -1,12 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
-using TicketFlow.Application.Services.Background;
-using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
+using TicketFlow.Bookings.Application.Services.Background;
+using TicketFlow.Bookings.Domain.Entities;
+using TicketFlow.Bookings.Domain.Enums;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Bookings
 {
+    // Тест на отклонение брони при отсутствующем событии удалён без замены: Bookings
+    // больше не проверяет существование события вообще (это делает Events по Kafka).
     public class BookingProcessingBackgroundServiceTests
     {
         private readonly Mock<ILogger<BookingProcessingBackgroundService>> _loggerMock = new();
@@ -41,10 +43,8 @@ namespace TicketFlow.Tests
         {
             using var env = TestHelpers.Create();
 
-            var eventItem = TestHelpers.CreateTestEvent(2);
-            var booking = new Booking(eventItem.Id, Guid.NewGuid());
+            var booking = new Booking(Guid.NewGuid(), Guid.NewGuid());
 
-            env.SeedEvent(eventItem);
             env.SeedBooking(booking);
 
             var service = CreateBackgroundService(env);
@@ -84,28 +84,5 @@ namespace TicketFlow.Tests
             Assert.Equal(BookingStatus.Confirmed, resultBooking.Status);
             Assert.Equal(originalProcessedAt, resultBooking.ProcessedAt);
         }
-
-        [Fact]
-        public async Task ExecuteAsync_ShouldConvertPendingToRejected_WhenEventDoesNotExist()
-        {
-            using var env = TestHelpers.Create();
-
-            var fakeEventId = Guid.NewGuid();
-            var booking = new Booking(fakeEventId, Guid.NewGuid());
-
-            env.SeedBooking(booking);
-
-            var service = CreateBackgroundService(env);
-
-            await RunBackgroundServiceForAsync(service);
-
-            var processedBooking = env.FindBooking(booking.Id);
-
-            Assert.NotNull(processedBooking);
-            Assert.Equal(BookingStatus.Rejected, processedBooking.Status);
-            Assert.NotNull(processedBooking.ProcessedAt);
-            Assert.True(processedBooking.ProcessedAt <= DateTime.UtcNow);
-        }
-
     }
 }

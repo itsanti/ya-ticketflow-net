@@ -3,10 +3,10 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using TicketFlow.Domain.Enums;
-using TicketFlow.Infrastructure.Security;
+using TicketFlow.Users.Domain.Enums;
+using TicketFlow.Users.Infrastructure.Security;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Users
 {
     public class JwtTokenGeneratorTests
     {

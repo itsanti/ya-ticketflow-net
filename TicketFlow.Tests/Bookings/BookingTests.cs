@@ -1,7 +1,7 @@
-﻿using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
+using TicketFlow.Bookings.Domain.Entities;
+using TicketFlow.Bookings.Domain.Enums;
 
-namespace TicketFlow.Tests.Models
+namespace TicketFlow.Tests.Bookings
 {
     public class BookingTests
     {

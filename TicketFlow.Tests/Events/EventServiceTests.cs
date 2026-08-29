@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using TicketFlow.Application.DTOs.Events;
-using TicketFlow.Domain.Exceptions;
-using TicketFlow.Application.Services;
+using Microsoft.Extensions.DependencyInjection;
+using TicketFlow.Events.Application.DTOs;
+using TicketFlow.Events.Application.Services;
+using TicketFlow.Events.Domain.Exceptions;
 
-namespace TicketFlow.Tests
+namespace TicketFlow.Tests.Events
 {
     public class EventServiceTests
     {

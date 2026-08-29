@@ -1,19 +1,22 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Npgsql;
 using Testcontainers.PostgreSql;
-using TicketFlow.Application.DependencyInjection;
-using TicketFlow.Infrastructure.DependencyInjection;
-using TicketFlow.Infrastructure.Persistence;
+using TicketFlow.Bookings.Application.Abstractions;
+using TicketFlow.Bookings.Application.DependencyInjection;
+using TicketFlow.Bookings.Infrastructure.DependencyInjection;
+using TicketFlow.Bookings.Infrastructure.Persistence;
+using TicketFlow.Contracts;
 
-namespace TicketFlow.IntegrationTests.Infrastructure
+namespace TicketFlow.IntegrationTests.Bookings
 {
     public class PostgreSqlTestFixture : IAsyncLifetime
     {
         private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
             .WithImage("postgres:16")
-            .WithDatabase("ticketflow_tests")
+            .WithDatabase("ticketflow_bookings_tests")
             .WithUsername("postgres")
             .WithPassword("postgres")
             .Build();
@@ -30,13 +33,13 @@ namespace TicketFlow.IntegrationTests.Infrastructure
             await _postgres.DisposeAsync();
         }
 
-        public AppDbContext CreateContext()
+        public BookingsDbContext CreateContext()
         {
-            var options = new DbContextOptionsBuilder<AppDbContext>()
+            var options = new DbContextOptionsBuilder<BookingsDbContext>()
                 .UseNpgsql(ConnectionString)
                 .Options;
 
-            return new AppDbContext(options);
+            return new BookingsDbContext(options);
         }
 
         public ServiceProvider CreateServiceProvider()
@@ -46,15 +49,20 @@ namespace TicketFlow.IntegrationTests.Infrastructure
             var configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32bytes",
-                    ["Jwt:Issuer"] = "TicketFlow.IntegrationTests",
-                    ["Jwt:Audience"] = "TicketFlow.IntegrationTests",
-                    ["Jwt:ExpirationMinutes"] = "60"
+                    ["Booking:MaxActiveBookingsPerUser"] = "10"
                 })
                 .Build();
 
             services.AddInfrastructureServices(ConnectionString, configuration);
             services.AddApplicationServices(configuration);
+
+            // Kafka-паблишер заменён на заглушку: рядом нет брокера, а здесь проверяется
+            // только смена статуса брони в БД, не доставка сообщения.
+            var publisherMock = new Mock<IBookingConfirmedPublisher>();
+            publisherMock
+                .Setup(p => p.PublishAsync(It.IsAny<BookingConfirmedEvent>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(publisherMock.Object);
 
             return services.BuildServiceProvider();
         }

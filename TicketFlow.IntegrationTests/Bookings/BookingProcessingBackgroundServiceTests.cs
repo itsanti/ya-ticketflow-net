@@ -1,14 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using TicketFlow.Application.Services.Background;
-using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
-using TicketFlow.IntegrationTests.Infrastructure;
+using TicketFlow.Bookings.Application.Services.Background;
+using TicketFlow.Bookings.Domain.Entities;
+using TicketFlow.Bookings.Domain.Enums;
 
-namespace TicketFlow.IntegrationTests.Services
+namespace TicketFlow.IntegrationTests.Bookings
 {
-    [Collection("PostgreSql collection")]
+    [Collection("Bookings PostgreSql collection")]
     public class BookingProcessingBackgroundServiceTests
     {
         private readonly PostgreSqlTestFixture _fixture;
@@ -19,7 +18,7 @@ namespace TicketFlow.IntegrationTests.Services
         }
 
         [Fact]
-        public async Task ExecuteAsync_ShouldPersistConfirmedStatus_WhenEventExists()
+        public async Task ExecuteAsync_ShouldPersistConfirmedStatus()
         {
             await _fixture.ResetDatabaseAsync();
 
@@ -27,19 +26,9 @@ namespace TicketFlow.IntegrationTests.Services
 
             await using (var context = _fixture.CreateContext())
             {
-                var eventItem = Event.Create(
-                    "Tech Conference",
-                    "Description",
-                    DateTime.UtcNow.AddDays(1),
-                    DateTime.UtcNow.AddDays(2),
-                    10);
+                // Bookings больше не хранит Event/User — брони достаточно голых Id.
+                booking = new Booking(Guid.NewGuid(), Guid.NewGuid());
 
-                var user = User.Create($"user-{Guid.NewGuid()}", "hash", UserRole.User);
-
-                booking = new Booking(eventItem.Id, user.Id);
-
-                await context.Events.AddAsync(eventItem);
-                await context.Users.AddAsync(user);
                 await context.Bookings.AddAsync(booking);
                 await context.SaveChangesAsync();
             }

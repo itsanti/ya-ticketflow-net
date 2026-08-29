@@ -1,14 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using TicketFlow.Domain.Entities;
-using TicketFlow.Domain.Enums;
-using TicketFlow.Infrastructure.Persistence;
-using TicketFlow.Infrastructure.Repositories;
-using TicketFlow.IntegrationTests.Infrastructure;
+using TicketFlow.Users.Domain.Entities;
+using TicketFlow.Users.Domain.Enums;
+using TicketFlow.Users.Infrastructure.Repositories;
 
-namespace TicketFlow.IntegrationTests.Repositories
+namespace TicketFlow.IntegrationTests.Users
 {
-    [Collection("PostgreSql collection")]
+    [Collection("Users PostgreSql collection")]
     public class UserRepositoryTests
     {
         private readonly PostgreSqlTestFixture _fixture;
