@@ -1,0 +1,105 @@
+using System.Text;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using TicketFlow.Events.Infrastructure.Security;
+
+namespace TicketFlow.Events.Presentation.DependencyInjection
+{
+    public static class PresentationServiceCollectionExtensions
+    {
+        public static IServiceCollection AddPresentationServices(this IServiceCollection services, IConfiguration configuration)
+        {
+            services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                })
+                .ConfigureApiBehaviorOptions(options =>
+                {
+                    options.InvalidModelStateResponseFactory = context =>
+                    {
+                        var errors = context.ModelState.Values
+                            .SelectMany(v => v.Errors)
+                            .Select(e => e.ErrorMessage);
+                        var detailMessage = string.Join(" ", errors);
+                        var problemDetails = new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Validation error",
+                            Detail = detailMessage
+                        };
+
+                        return new BadRequestObjectResult(problemDetails);
+                    };
+                });
+
+            services.AddProblemDetails(options =>
+            {
+                options.CustomizeProblemDetails = context =>
+                {
+                    context.ProblemDetails.Type = null;
+                    context.ProblemDetails.Title = context.ProblemDetails.Status switch
+                    {
+                        StatusCodes.Status400BadRequest => "Validation error",
+                        StatusCodes.Status404NotFound => "Not found",
+                        StatusCodes.Status500InternalServerError => "Internal server error",
+                        _ => context.ProblemDetails.Title
+                    };
+                };
+            });
+
+            services.AddAuthenticationServices(configuration);
+
+            services.AddOpenApi();
+            services.AddEndpointsApiExplorer();
+            services.AddSwaggerGen(options =>
+            {
+                options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Введите JWT-токен в формате: Bearer {токен}"
+                });
+
+                options.AddSecurityRequirement(document => new()
+                {
+                    [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+                });
+            });
+
+            return services;
+        }
+
+        private static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration)
+        {
+            var jwtSection = configuration.GetSection(JwtOptions.SectionName);
+            var jwtOptions = jwtSection.Get<JwtOptions>()
+                ?? throw new InvalidOperationException($"Configuration section '{JwtOptions.SectionName}' is missing.");
+
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret))
+                    };
+                });
+
+            services.AddAuthorization();
+
+            return services;
+        }
+    }
+}

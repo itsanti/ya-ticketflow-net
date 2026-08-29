@@ -1,0 +1,4 @@
+namespace TicketFlow.Bookings.Domain.Exceptions
+{
+    public class ForbiddenException(string message) : DomainException(message);
+}

@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector"  />
+    <PackageReference Include="Confluent.Kafka" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -18,9 +19,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TicketFlow.Application\TicketFlow.Application.csproj" />
-    <ProjectReference Include="..\TicketFlow.Domain\TicketFlow.Domain.csproj" />
-    <ProjectReference Include="..\TicketFlow.Infrastructure\TicketFlow.Infrastructure.csproj" />
+    <ProjectReference Include="..\TicketFlow.Contracts\TicketFlow.Contracts.csproj" />
+
+    <ProjectReference Include="..\TicketFlow.Users.Domain\TicketFlow.Users.Domain.csproj" />
+    <ProjectReference Include="..\TicketFlow.Users.Application\TicketFlow.Users.Application.csproj" />
+    <ProjectReference Include="..\TicketFlow.Users.Infrastructure\TicketFlow.Users.Infrastructure.csproj" />
+
+    <ProjectReference Include="..\TicketFlow.Events.Domain\TicketFlow.Events.Domain.csproj" />
+    <ProjectReference Include="..\TicketFlow.Events.Application\TicketFlow.Events.Application.csproj" />
+    <ProjectReference Include="..\TicketFlow.Events.Infrastructure\TicketFlow.Events.Infrastructure.csproj" />
+
+    <ProjectReference Include="..\TicketFlow.Bookings.Domain\TicketFlow.Bookings.Domain.csproj" />
+    <ProjectReference Include="..\TicketFlow.Bookings.Application\TicketFlow.Bookings.Application.csproj" />
+    <ProjectReference Include="..\TicketFlow.Bookings.Infrastructure\TicketFlow.Bookings.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

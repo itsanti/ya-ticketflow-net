@@ -1,0 +1,117 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using TicketFlow.Bookings.Application.Abstractions;
+using TicketFlow.Bookings.Domain.Enums;
+using TicketFlow.Contracts;
+
+namespace TicketFlow.Bookings.Application.Services.Background
+{
+    public class BookingProcessingBackgroundService(
+        IServiceScopeFactory scopeFactory,
+        ILogger<BookingProcessingBackgroundService> logger
+    ) : BackgroundService
+    {
+        private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
+        private readonly ILogger<BookingProcessingBackgroundService> _logger = logger;
+
+        private static readonly int _processingDelay = 2000;
+        private static readonly int _pollingInterval = 5000;
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Booking processing background service started.");
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    IReadOnlyList<Guid> pendingBookingIds;
+                    using (var scope = _scopeFactory.CreateScope())
+                    {
+                        var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+                        pendingBookingIds = await bookingRepository.GetPendingIdsAsync(stoppingToken);
+                    }
+
+                    var tasks = pendingBookingIds.Select(id => ProcessBookingAsync(id, stoppingToken));
+                    await Task.WhenAll(tasks);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred during booking polling.");
+                }
+
+                try
+                {
+                    await Task.Delay(_pollingInterval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+
+            _logger.LogInformation("Booking processing background service is stopping.");
+        }
+
+        private async Task ProcessBookingAsync(Guid bookingId, CancellationToken stoppingToken)
+        {
+            try
+            {
+                await Task.Delay(_processingDelay, stoppingToken);
+
+                _logger.LogInformation("Processing booking with ID {BookingId}", bookingId);
+
+                using var scope = _scopeFactory.CreateScope();
+                var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+
+                var publisher = scope.ServiceProvider.GetRequiredService<IBookingConfirmedPublisher>();
+
+                var booking = await bookingRepository.GetByIdAsync(bookingId, stoppingToken);
+                if (booking == null || booking.Status != BookingStatus.Pending)
+                    return;
+
+                booking.Confirm();
+                await bookingRepository.SaveChangesAsync(stoppingToken);
+
+                try
+                {
+                    var confirmedEvent = new BookingConfirmedEvent(bookingId, booking.EventId, booking.UserId, 1, booking.ProcessedAt!.Value);
+                    await publisher.PublishAsync(confirmedEvent, stoppingToken);
+                }
+                catch (Exception publishEx)
+                {
+                    // Бронь уже подтверждена и сохранена — сбой публикации не должен её откатывать.
+                    _logger.LogError(publishEx, "Failed to publish BookingConfirmed event for booking {BookingId}", bookingId);
+                }
+
+                _logger.LogInformation("Successfully processed booking with ID {BookingId}", booking.Id);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Processing canceled for booking {BookingId}", bookingId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while processing booking with ID {BookingId}", bookingId);
+
+                using var scope = _scopeFactory.CreateScope();
+                var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+
+                var booking = await bookingRepository.GetByIdAsync(bookingId, stoppingToken);
+                if (booking != null)
+                {
+                    booking.Reject();
+                    await bookingRepository.SaveChangesAsync(stoppingToken);
+
+                    _logger.LogError(ex, "Booking {BookingId} rejected due to processing error", bookingId);
+                }
+            }
+        }
+    }
+}
