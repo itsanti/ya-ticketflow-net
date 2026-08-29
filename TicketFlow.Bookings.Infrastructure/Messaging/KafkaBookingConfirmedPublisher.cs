@@ -28,7 +28,6 @@ namespace TicketFlow.Bookings.Infrastructure.Messaging
         public void Dispose()
         {
             _producer.Flush(TimeSpan.FromSeconds(10));
-            _producer.Dispose();
         }
     }
 }

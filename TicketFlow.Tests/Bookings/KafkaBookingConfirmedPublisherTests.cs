@@ -83,7 +83,7 @@ namespace TicketFlow.Tests.Bookings
         }
 
         [Fact]
-        public void Dispose_ShouldFlushAndDisposeProducer()
+        public void Dispose_ShouldFlushProducer()
         {
             var producerMock = new Mock<IProducer<string, string>>();
             producerMock.Setup(p => p.Flush(It.IsAny<TimeSpan>())).Returns(0);
@@ -93,7 +93,9 @@ namespace TicketFlow.Tests.Bookings
             publisher.Dispose();
 
             producerMock.Verify(p => p.Flush(It.IsAny<TimeSpan>()), Times.Once);
-            producerMock.Verify(p => p.Dispose(), Times.Once);
+            // Dispose() продюсера не вызываем в паблишере — он singleton в DI,
+            // контейнер освобождает его сам (см. комментарий в KafkaBookingConfirmedPublisher.Dispose).
+            producerMock.Verify(p => p.Dispose(), Times.Never);
         }
     }
 }
