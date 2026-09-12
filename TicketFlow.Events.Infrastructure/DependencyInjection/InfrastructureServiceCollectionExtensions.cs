@@ -38,6 +38,8 @@ namespace TicketFlow.Events.Infrastructure.DependencyInjection
                 return ConnectionMultiplexer.Connect(configurationOptions);
             });
 
+            services.AddSingleton<ICacheService, RedisCacheService>();
+
             return services;
         }
 
