@@ -7,6 +7,7 @@ namespace TicketFlow.Events.Application.Services
     {
         Task<PaginatedResult<EventInfoDto>> GetEventsAsync(EventFiltersDto filters);
         Task<EventInfoDto> GetEventAsync(Guid eventId);
+        Task<IReadOnlyList<EventInfoDto>> GetTopEventsAsync();
         Task<Guid> AddEventAsync(CreateEventDto dto);
         Task<EventInfoDto> UpdateEventAsync(Guid eventId, UpdateEventDto dto);
         Task RemoveEventAsync(Guid eventId);

@@ -26,6 +26,16 @@ namespace TicketFlow.Events.Infrastructure.Repositories
                 .FirstOrDefaultAsync(e => e.Id == id, ct);
         }
 
+        public async Task<IReadOnlyList<Event>> GetTopPopularAsync(int count, CancellationToken ct = default)
+        {
+            return await _context.Events
+                .AsNoTracking()
+                .OrderByDescending(e => (double)(e.TotalSeats - e.AvailableSeats) / e.TotalSeats)
+                .ThenBy(e => e.Id)
+                .Take(count)
+                .ToListAsync(ct);
+        }
+
         public async Task<(IReadOnlyList<Event> Items, int TotalCount)> GetPagedAsync(EventFiltersDto filters, CancellationToken ct = default)
         {
             IQueryable<Event> query = _context.Events.AsNoTracking();
