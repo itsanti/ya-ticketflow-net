@@ -344,6 +344,83 @@ namespace TicketFlow.Tests.Events
             await Assert.ThrowsAsync<ValidationException>(() => service.AddEventAsync(invalidDto));
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public async Task UpdateEvent_ShouldThrowValidationException_WhenTotalSeatsIsNotPositive(int totalSeats)
+        {
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+
+            var id = await service.AddEventAsync(_events.First());
+            var invalidUpdate = new UpdateEventDto
+            {
+                Title = "Valid Title",
+                StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
+                EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+                TotalSeats = totalSeats,
+            };
+
+            await Assert.ThrowsAsync<ValidationException>(() => service.UpdateEventAsync(id, invalidUpdate));
+        }
+
+        [Fact]
+        public async Task UpdateEvent_ShouldThrowValidationException_WhenTotalSeatsIsLessThanReservedSeats()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            Assert.True(eventItem.TryReserveSeats(4));
+            env.SeedEvent(eventItem);
+
+            var invalidUpdate = new UpdateEventDto
+            {
+                Title = "Valid Title",
+                StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
+                EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+                TotalSeats = 3,
+            };
+
+            await Assert.ThrowsAsync<ValidationException>(() => service.UpdateEventAsync(eventItem.Id, invalidUpdate));
+
+            // Событие не должно измениться даже частично.
+            var stored = env.FindEvent(eventItem.Id)!;
+            Assert.Equal(10, stored.TotalSeats);
+            Assert.Equal(6, stored.AvailableSeats);
+            Assert.Equal("Тестовое событие", stored.Title);
+        }
+
+        [Fact]
+        public async Task UpdateEvent_ShouldRecalculateAvailableSeats_WhenCapacityChanged()
+        {
+            using var env = TestHelpers.Create();
+            using var scope = env.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+
+            var eventItem = TestHelpers.CreateTestEvent(10);
+            Assert.True(eventItem.TryReserveSeats(4));
+            env.SeedEvent(eventItem);
+
+            var updateDto = new UpdateEventDto
+            {
+                Title = "Обновлённое событие",
+                StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
+                EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+                TotalSeats = 20,
+            };
+
+            var result = await service.UpdateEventAsync(eventItem.Id, updateDto);
+
+            Assert.Equal(20, result.TotalSeats);
+            Assert.Equal(16, result.AvailableSeats);
+        }
+
         [Fact]
         public async Task UpdateEvent_ShouldThrowValidationException_WhenNewDatesAreInvalid()
         {

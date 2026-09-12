@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using TicketFlow.Events.Application.Abstractions;
@@ -16,6 +17,8 @@ namespace TicketFlow.Tests.Events
 
         public Mock<IEventRepository> EventRepository { get; } = new();
 
+        public Mock<ICacheService> CacheService { get; } = new();
+
         private readonly HashSet<Guid> _processedBookingIds = [];
 
         public TestEnvironment()
@@ -25,7 +28,8 @@ namespace TicketFlow.Tests.Events
             var services = new ServiceCollection();
 
             services.AddSingleton(EventRepository.Object);
-            services.AddApplicationServices();
+            services.AddSingleton(CacheService.Object);
+            services.AddApplicationServices(new ConfigurationBuilder().Build());
 
             Provider = services.BuildServiceProvider();
         }
@@ -103,6 +107,20 @@ namespace TicketFlow.Tests.Events
                     }
                 })
                 .Returns(Task.CompletedTask);
+
+            EventRepository
+                .Setup(r => r.GetTopPopularAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((int count, CancellationToken _) =>
+                {
+                    lock (_sync)
+                    {
+                        return (IReadOnlyList<Event>)_events
+                            .OrderByDescending(e => (double)(e.TotalSeats - e.AvailableSeats) / e.TotalSeats)
+                            .ThenBy(e => e.Id)
+                            .Take(count)
+                            .ToList();
+                    }
+                });
 
             // Повторяет семантику EventRepository.GetPagedAsync: фильтрация, сортировка, пагинация.
             EventRepository

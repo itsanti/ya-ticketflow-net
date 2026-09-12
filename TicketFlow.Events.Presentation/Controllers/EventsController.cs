@@ -23,6 +23,12 @@ namespace TicketFlow.Events.Presentation.Controllers
             return Ok(await _eventService.GetEventsAsync(filters));
         }
 
+        [HttpGet("top")]
+        public async Task<ActionResult<IReadOnlyList<EventInfoDto>>> GetTopEvents()
+        {
+            return Ok(await _eventService.GetTopEventsAsync());
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<EventInfoDto>> GetEvent(Guid id)
         {

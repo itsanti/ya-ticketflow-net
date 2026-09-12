@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using TicketFlow.Contracts;
+using TicketFlow.Events.Application.Caching;
 using TicketFlow.Events.Infrastructure.Messaging;
 
 namespace TicketFlow.Tests.Events
@@ -116,6 +117,45 @@ namespace TicketFlow.Tests.Events
             Assert.Equal(4, env.FindEvent(eventItem.Id)!.AvailableSeats);
 
             env.EventRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleMessageAsync_ShouldInvalidateEventCache_WhenSeatReserved()
+        {
+            using var env = TestHelpers.Create();
+            var consumer = CreateConsumer(env);
+
+            var eventItem = TestHelpers.CreateTestEvent(5);
+            env.SeedEvent(eventItem);
+
+            var message = new BookingConfirmedEvent(
+                Guid.NewGuid(), eventItem.Id, Guid.NewGuid(), 1, DateTime.UtcNow);
+
+            await consumer.HandleMessageAsync(Serialize(message), CancellationToken.None);
+
+            env.CacheService.Verify(
+                c => c.RemoveAsync(CacheKeys.EventKey(eventItem.Id), It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleMessageAsync_ShouldNotInvalidateCache_WhenNoAvailableSeats()
+        {
+            using var env = TestHelpers.Create();
+            var consumer = CreateConsumer(env);
+
+            var eventItem = TestHelpers.CreateTestEvent(1);
+            Assert.True(eventItem.TryReserveSeats(1));
+            env.SeedEvent(eventItem);
+
+            var message = new BookingConfirmedEvent(
+                Guid.NewGuid(), eventItem.Id, Guid.NewGuid(), 1, DateTime.UtcNow);
+
+            await consumer.HandleMessageAsync(Serialize(message), CancellationToken.None);
+
+            env.CacheService.Verify(
+                c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]

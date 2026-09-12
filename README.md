@@ -18,6 +18,7 @@
 - **Спринт 7**: Переход на чистую архитектуру — разделение проекта на четыре сборки (Domain, Application, Infrastructure, Presentation), интерфейсы портов и composition root ✅
 - **Спринт 8**: JWT-аутентификация и ролевая авторизация (сущность `User`, роли `Admin`/`User`), доменные правила бронирования — запрет брони прошедшего события, лимит активных броней на пользователя, отмена брони с проверкой прав владельца ✅
 - **Спринт 9**: Декомпозиция монолита на три независимых микросервиса (Users, Events, Bookings), каждый со своей БД; асинхронный обмен через Apache Kafka (`BookingConfirmed`); идемпотентная обработка сообщений; JWT проверяется во всех трёх сервисах по общему секрету; вся система поднимается через `docker compose up` ✅
+- **Спринт 10**: Кеширование в Redis для сервиса Events — cache-aside для карточки события и нового публичного эндпоинта топ-10 популярных событий (`GET /events/top`); абстракция кеша (`ICacheService`) в Application, реализация на `StackExchange.Redis` — в Infrastructure; TTL вынесены в конфигурацию; Delete-on-Write инвалидация `event:{id}` при изменении, удалении и при обработке Kafka-сообщения; кеш деградирует без ошибки для клиента, если Redis недоступен ✅
 ---
 
 ## 📜 История проекта
@@ -45,10 +46,10 @@
 │   ├── Infrastructure/                        # UsersDbContext, UserRepository, PasswordHasher (BCrypt), JwtTokenGenerator
 │   └── Presentation/                          # AuthController, Program.cs, Swagger
 │
-├── TicketFlow.Events.*/                       # CRUD событий, учёт мест — БД events
+├── TicketFlow.Events.*/                       # CRUD событий, учёт мест, кеш чтения — БД events + Redis
 │   ├── Domain/                                # Event (TryReserveSeats/ReleaseSeats), ProcessedBookingConfirmation
-│   ├── Application/                           # IEventService/EventService, IEventRepository
-│   ├── Infrastructure/                        # EventsDbContext, EventRepository, Messaging/ (Kafka-подписчик, см. ниже)
+│   ├── Application/                           # IEventService/EventService, IEventRepository, ICacheService, Caching/CacheKeys, Options/CacheOptions
+│   ├── Infrastructure/                        # EventsDbContext, EventRepository, Messaging/ (Kafka-подписчик), Caching/ (RedisCacheService, см. ниже)
 │   └── Presentation/                          # EventsController ([Authorize(Roles = "Admin")] на запись), Swagger
 │
 ├── TicketFlow.Bookings.*/                     # Создание и отмена броней — БД bookings
@@ -61,7 +62,7 @@
 ├── TicketFlow.IntegrationTests/               # Интеграционные тесты, разложены по сервисам (своя БД-фикстура и WebApplicationFactory на сервис)
 │
 ├── Dockerfile                                 # Один параметризованный multi-stage Dockerfile на все три сервиса (ARG SERVICE_PROJECT/SERVICE_DLL)
-└── docker-compose.yml                         # Zookeeper + Kafka + 3×PostgreSQL + 3 сервиса — поднимаются одной командой
+└── docker-compose.yml                         # Zookeeper + Kafka + 3×PostgreSQL + Redis + 3 сервиса — поднимаются одной командой
 ```
 
 Направление зависимостей внутри каждого сервиса — то же, что было в монолите:
@@ -88,9 +89,13 @@ Presentation ──> Application <── Infrastructure
 
 Сценарии использования и **интерфейсы портов** в `Abstractions/` — что сервису нужно от внешнего мира, без знания, кто и как это реализует. У Bookings появился новый порт — `IBookingConfirmedPublisher`, реализация которого (Kafka) находится в Infrastructure; Application по-прежнему не знает, что события летят в Kafka, а не куда-то ещё.
 
+В десятом спринте у Events по тому же принципу появился порт `ICacheService` (получить по ключу / записать с TTL / удалить): `EventService` знает только про «кеш с временем жизни», а не про Redis — ни одной ссылки на `StackExchange.Redis` в Application нет. Рядом лежат `Caching/CacheKeys` (все ключи кеша собраны в одном месте) и `Options/CacheOptions` (значения TTL из конфигурации), см. [«Кеширование»](#-кеширование-redis-сервис-events).
+
 ### Infrastructure — как это технически реализовано
 
 Адаптеры к внешним технологиям: `DbContext` сервиса, Fluent API-конфигурации, миграции, реализации репозиториев — как и раньше. Новое здесь — `Messaging/`: у Bookings это `KafkaBookingConfirmedPublisher` (издатель), у Events — `BookingConfirmedConsumer` и `KafkaTopicInitializer` (подписчик и создание топика). Подробности — в разделе про Kafka.
+
+У Events добавилась ещё одна папка-адаптер — `Caching/`: `RedisCacheService` (реализация порта `ICacheService` поверх `StackExchange.Redis`, с сериализацией в JSON и подавлением ошибок кеша) и `RedisOptions` (строка подключения из конфигурации). Соединение `IConnectionMultiplexer` регистрируется singleton'ом в `AddInfrastructureServices` — это тяжёлый потокобезопасный объект, который создаётся один раз на весь жизненный цикл приложения.
 
 ### Presentation — как этим пользоваться снаружи
 
@@ -101,10 +106,12 @@ HTTP-обвязка, JWT-аутентификация (`AddJwtBearer`) и Swagge
 | Сервис | Ответственность | HTTP (dev) | HTTP (Docker) | Swagger | БД (Postgres) | Порт БД (host) |
 |---|---|---|---|---|---|---|
 | **Users** | Регистрация, вход, выдача JWT | `localhost:5101` / `7001` (https) | `localhost:5101` | `/swagger` | `users` | `5432` |
-| **Events** | CRUD событий, учёт мест, подписчик Kafka | `localhost:5102` / `7002` (https) | `localhost:5102` | `/swagger` | `events` | `5433` |
+| **Events** | CRUD событий, учёт мест, подписчик Kafka, кеш чтения в Redis | `localhost:5102` / `7002` (https) | `localhost:5102` | `/swagger` | `events` | `5433` |
 | **Bookings** | Создание/отмена брони, издатель Kafka | `localhost:5103` / `7003` (https) | `localhost:5103` | `/swagger` | `bookings` | `5434` |
 
 Внутри Docker-сети все три Postgres слушают стандартный `5432` — наружу пробрасываются разные порты только для локального доступа с хоста. Kafka внутри сети — `kafka:29092`, снаружи (с хоста) — `localhost:9092`.
+
+Redis (кеш сервиса Events) внутри сети — `redis:6379`, снаружи (с хоста) — `localhost:6379`. Тома у него нет и не нужно: это кеш, состояние которого можно потерять без последствий для данных — после перезапуска он просто прогреется заново из базы.
 
 ## 📡 Асинхронное взаимодействие через Kafka
 
@@ -199,6 +206,19 @@ public sealed record BookingConfirmedEvent(
 - [x]  Bookings больше не обращается к данным о событиях напрямую — синхронные проверки существования/начала события/мест удалены вместе с `KeyedAsyncLock`; согласованность стала eventual через Kafka
 - [x]  Один параметризованный multi-stage `Dockerfile` собирает все три сервиса; `docker compose up` поднимает Zookeeper, Kafka, три PostgreSQL и три сервиса одной командой
 - [x]  Юнит- и интеграционные тесты переразложены по сервисам; добавлены тесты на Kafka-издатель и Kafka-подписчик, включая идемпотентность
+
+ **(Спринт 10)**
+- [x]  Redis подключён к сервису Events: `IConnectionMultiplexer` регистрируется singleton'ом в DI, строка подключения — в конфигурации (`Redis:ConnectionString`)
+- [x]  Абстракция кеша (`ICacheService`: получить / записать с TTL / удалить) объявлена в Application, реализация `RedisCacheService` на `StackExchange.Redis` — в Infrastructure
+- [x]  Cache-aside для карточки события (`GET /events/{id}`, ключ `event:{id}`): при попадании в кеш обращения к базе нет, при промахе результат читается из базы и сохраняется в кеш с TTL
+- [x]  Новый публичный эндпоинт `GET /events/top` — топ-10 событий по проценту проданных мест (`(TotalSeats - AvailableSeats) / TotalSeats`), с кешем по ключу `events:top10`
+- [x]  TTL кеша разные для разных данных и вынесены в конфигурацию (`Cache:EventTtlSeconds` = 60, `Cache:TopEventsTtlSeconds` = 300)
+- [x]  Все ключи кеша собраны в одном месте — `Caching/CacheKeys`, а не разбросаны по коду
+- [x]  Стратегия Delete-on-Write: `event:{id}` инвалидируется после `SaveChangesAsync` при обновлении и удалении события, а также в `BookingConfirmedConsumer` после уменьшения мест — порядок «сначала база, потом кеш» соблюдён везде
+- [x]  Кеш топ-10 живёт только по TTL — явной инвалидации при каждом бронировании нет (обоснование — в разделе [«Кеширование»](#-кеширование-redis-сервис-events))
+- [x]  Устойчивость к недоступности Redis: ошибки кеша логируются и не пробрасываются клиенту, запрос уходит напрямую в базу; `AbortOnConnectFail = false` позволяет сервису стартовать и работать без поднятого Redis
+- [x]  Юнит-тесты кеширования: попадание в кеш (репозиторий не вызывается), промах (чтение из репозитория + запись в кеш), инвалидация при мутирующих операциях и в Kafka-консьюмере
+- [x]  Попутно закрыт инвариант вместимости, который обнажился из-за деления на `TotalSeats` в запросе топ-10: изменение вместимости идёт через `Event.ChangeCapacity` с пересчётом свободных мест и запретом опускаться ниже числа проданных
 ---
 
 ## 🛠 Технологический стек
@@ -209,6 +229,7 @@ public sealed record BookingConfirmedEvent(
 - **Database**: PostgreSQL — своя база на сервис
 - **ORM**: Entity Framework Core
 - **EF Provider**: Npgsql.EntityFrameworkCore.PostgreSQL
+- **Cache**: Redis (StackExchange.Redis) — кеш чтения в сервисе Events
 - **Messaging**: Apache Kafka (Confluent.Kafka), Zookeeper — для координации брокера
 - **Authentication**: JWT Bearer (Microsoft.AspNetCore.Authentication.JwtBearer) — выдаёт только Users, проверяют все три
 - **Token generation**: System.IdentityModel.Tokens.Jwt
@@ -226,7 +247,9 @@ public sealed record BookingConfirmedEvent(
 - интерфейсы портов — `IUserRepository` (Users), `IEventRepository` (Events), `IBookingRepository` (Bookings) — объявлены в `<Сервис>.Application/Abstractions/`;
 - реализации-адаптеры — `UserRepository`, `EventRepository`, `BookingRepository` — находятся в `<Сервис>.Infrastructure/Repositories/` и работают через собственный `DbContext` (`UsersDbContext`/`EventsDbContext`/`BookingsDbContext`).
 
-Сервисы не обращаются к `DbContext` напрямую и не знают о конкретных реализациях — связывание происходит в composition root (`AddInfrastructureServices`). Репозитории отвечают только за доступ к данным: поиск по ID (и по логину — для `User`), добавление, удаление, выборку с фильтрацией и пагинацией (Events), выборку pending-бронирований и подсчёт активных броней пользователя (Bookings), а также идемпотентный журнал `ProcessedBookingConfirmation` (Events, см. [Kafka](#-асинхронное-взаимодействие-через-kafka)). Уникальность логина в Users обеспечена индексом `IX_users_login`. Внешнего ключа `bookings.event_id → events.id` больше нет — базы разные.
+Сервисы не обращаются к `DbContext` напрямую и не знают о конкретных реализациях — связывание происходит в composition root (`AddInfrastructureServices`). Репозитории отвечают только за доступ к данным: поиск по ID (и по логину — для `User`), добавление, удаление, выборку с фильтрацией и пагинацией (Events), выборку топ-10 по проценту проданных мест (`GetTopPopularAsync`, Events — сортировка считается в SQL, не в памяти), выборку pending-бронирований и подсчёт активных броней пользователя (Bookings), а также идемпотентный журнал `ProcessedBookingConfirmation` (Events, см. [Kafka](#-асинхронное-взаимодействие-через-kafka)). Уникальность логина в Users обеспечена индексом `IX_users_login`. Внешнего ключа `bookings.event_id → events.id` больше нет — базы разные.
+
+Кеш живёт слоем выше репозиториев — в `EventService` (cache-aside), поэтому репозиторий остаётся «немым» источником данных и ничего не знает про Redis, см. [«Кеширование»](#-кеширование-redis-сервис-events).
 
 Бизнес-логика остаётся в сервисах и доменных моделях.
 
@@ -243,7 +266,7 @@ public sealed record BookingConfirmedEvent(
 
 `TicketFlow.Contracts` и `*.Domain` (все три сервиса) — ни одного пакета.
 
-`*.Application` (все три сервиса) — `Microsoft.Extensions.DependencyInjection.Abstractions`; у Bookings дополнительно `Microsoft.Extensions.Hosting.Abstractions` и `Microsoft.Extensions.Options*` (там же живёт `BookingProcessingBackgroundService`).
+`*.Application` (все три сервиса) — `Microsoft.Extensions.DependencyInjection.Abstractions`; у Bookings дополнительно `Microsoft.Extensions.Hosting.Abstractions` и `Microsoft.Extensions.Options*` (там же живёт `BookingProcessingBackgroundService`), у Events — `Microsoft.Extensions.Options*` (биндинг `CacheOptions` и `IOptions` в `EventService`).
 
 `Users.Infrastructure`:
 ```bash
@@ -254,7 +277,7 @@ public sealed record BookingConfirmedEvent(
 - BCrypt.Net-Next
 ```
 
-`Events.Infrastructure` / `Bookings.Infrastructure` — то же самое плюс `Confluent.Kafka` (издатель/подписчик); у Events дополнительно `Microsoft.Extensions.Hosting.Abstractions` (`BackgroundService`/`IHostedService` для консьюмера и создателя топика).
+`Events.Infrastructure` / `Bookings.Infrastructure` — то же самое плюс `Confluent.Kafka` (издатель/подписчик); у Events дополнительно `Microsoft.Extensions.Hosting.Abstractions` (`BackgroundService`/`IHostedService` для консьюмера и создателя топика) и `StackExchange.Redis` (клиент кеша, `RedisCacheService`).
 
 `*.Presentation` (все три сервиса):
 ```bash
@@ -286,7 +309,7 @@ public sealed record BookingConfirmedEvent(
 
 ### Вариант 1 — вся система в Docker (рекомендуется)
 
-Поднимает Zookeeper, Kafka, три PostgreSQL и все три сервиса одной командой.
+Поднимает Zookeeper, Kafka, три PostgreSQL, Redis и все три сервиса одной командой.
 
 **Предварительные требования:** Docker Desktop / Docker Engine с Docker Compose.
 
@@ -306,12 +329,14 @@ docker compose up --build
 
 ### Вариант 2 — сервис локально, инфраструктура в Docker
 
-Для разработки одного сервиса без пересборки контейнеров: поднимите инфраструктуру частично (например, только `events-db` и `kafka`/`zookeeper` из `docker-compose.yml`) и запустите сервис через `dotnet run`:
+Для разработки одного сервиса без пересборки контейнеров: поднимите инфраструктуру частично (например, только `events-db`, `redis` и `kafka`/`zookeeper` из `docker-compose.yml`) и запустите сервис через `dotnet run`:
 
 ```bash
-docker compose up -d zookeeper kafka events-db
+docker compose up -d zookeeper kafka events-db redis
 dotnet run --project TicketFlow.Events.Presentation
 ```
+
+`redis` в этом списке не обязателен: без него Events поднимется и будет работать, просто каждый запрос пойдёт в базу — ошибки кеша логируются и не доходят до клиента (см. [«Кеширование»](#-кеширование-redis-сервис-events)).
 
 Локальные `appsettings.Development.json` каждого сервиса уже указывают на `localhost` с портами из таблицы [«Сервисы, базы данных и порты»](#-сервисы-базы-данных-и-порты).
 
@@ -352,6 +377,32 @@ export ConnectionStrings__DefaultConnection="Host=...;Port=5432;Database=...;Use
 ```
 
 Если ни один источник не задаёт `Jwt:Secret` в окружении, отличном от Development, сервис упадёт при старте (`InvalidOperationException` в `AddAuthenticationServices`) — это осознанный fail-fast, а не баг.
+
+### Настройка Redis и TTL кеша
+
+Параметры кеша лежат в `appsettings.json` сервиса Events — секретов здесь нет, поэтому значения по умолчанию хранятся в репозитории:
+
+```json
+{
+  "Redis": {
+    "ConnectionString": "localhost:6379"
+  },
+  "Cache": {
+    "EventTtlSeconds": 60,
+    "TopEventsTtlSeconds": 300
+  }
+}
+```
+
+`Redis:ConnectionString` биндится в `RedisOptions` (Infrastructure) и передаётся в `IConnectionMultiplexer`; `Cache:*` — в `CacheOptions` (Application), откуда `EventService` берёт TTL для каждого ключа. Значения по умолчанию заданы и в самом классе `CacheOptions`, так что отсутствие секции не ломает старт сервиса.
+
+В Docker строка подключения переопределяется переменной окружения на имя контейнера (`docker-compose.yml`, сервис `events-service`) — тот же приём, что и с базой и Kafka:
+
+```bash
+Redis__ConnectionString: "redis:6379"
+```
+
+Соединение создаётся с `AbortOnConnectFail = false`, поэтому недоступный на старте Redis не роняет сервис: клиент продолжает переподключаться в фоне, а запросы всё это время обслуживаются напрямую из базы.
 
 ### Создание администратора
 
@@ -404,12 +455,15 @@ dotnet ef database update \
 | Метод | Путь | Описание | Статусы |
 |---|---|---|---|
 | `GET` | `/events` | Список событий с фильтрацией и пагинацией | 200 |
-| `GET` | `/events/{id}` | Получить событие по ID | 200, 404 |
+| `GET` | `/events/top` | Топ-10 событий по проценту проданных мест (кеш `events:top10`) | 200 |
+| `GET` | `/events/{id}` | Получить событие по ID (кеш `event:{id}`) | 200, 404 |
 | `POST` | `/events` | Создать новое событие (только Admin) | 201, 400, 401, 403 |
 | `PUT` | `/events/{id}` | Обновить событие целиком (только Admin) | 200, 400, 401, 403, 404 |
 | `DELETE` | `/events/{id}` | Удалить событие (только Admin) | 204, 401, 403, 404 |
 
 Параметры `GET /events`: `title` (строка), `from`/`to` (дата), `page`/`pageSize` (int).
+
+`GET /events/top` параметров не принимает — всегда 10 событий, отсортированных по убыванию доли проданных мест `(totalSeats - availableSeats) / totalSeats`; при равной доле порядок стабилизируется по `id`. Эндпоинт рассчитан на виджет главной страницы, который открывают анонимные посетители, поэтому токен не требуется, а результат кешируется на 5 минут (подробности — в разделе [«Кеширование»](#-кеширование-redis-сервис-events)). Маршрут `top` — литеральный сегмент, поэтому он не конфликтует с `GET /events/{id}`: ASP.NET Core отдаёт литералам приоритет над параметрами маршрута.
 
 **Bookings** (`/bookings`, `/events/{id}/book`):
 
@@ -421,7 +475,7 @@ dotnet ef database update \
 
 `POST /events/{id}/book` больше не проверяет существование события и не возвращает `404`/`409 sold-out` — Bookings не знает о данных Events. `409` теперь означает только превышение лимита активных броней (`BookingLimitExceededException`). Уменьшение мест происходит асинхронно в Events (см. [Kafka](#-асинхронное-взаимодействие-через-kafka)) и не отражается на ответе `POST`.
 
-`/auth/*` доступны без токена. Остальные эндпоинты требуют `Authorization: Bearer <token>`, выданный сервисом Users.
+`/auth/*` доступны без токена — как и `GET`-эндпоинты Events (`/events`, `/events/top`, `/events/{id}`): каталог событий и виджет топ-10 читают анонимные посетители, `[Authorize]` в Events стоит только на записи. Остальные эндпоинты требуют `Authorization: Bearer <token>`, выданный сервисом Users.
 
 #### Пример запроса (POST /auth/register)
 
@@ -482,6 +536,35 @@ dotnet ef database update \
   "availableSeats": 100
 }
 ```
+
+#### Пример ответа (GET /events/top, 200 OK)
+
+Плоский массив без обёртки-пагинации — размер ответа всегда не больше 10 элементов:
+
+```json
+[
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "title": "Tech Conference 2026",
+    "description": "Ежегодная конференция по современным технологиям",
+    "startAt": "2026-04-15T10:00:00",
+    "endAt": "2026-04-17T18:00:00",
+    "totalSeats": 100,
+    "availableSeats": 3
+  },
+  {
+    "id": "8b1f0c52-4e2a-4a51-9f0e-2d7a5c1b9e44",
+    "title": "Выставка роботов",
+    "description": "Короткое интерактивное шоу",
+    "startAt": "2026-08-10T12:00:00",
+    "endAt": "2026-08-10T12:30:00",
+    "totalSeats": 50,
+    "availableSeats": 20
+  }
+]
+```
+
+Первое событие продано на 97 %, второе — на 60 %, поэтому порядок именно такой.
 
 #### Пример запроса с фильтрацией и пагинацией (GET /events?title=Tech&page=1&pageSize=10)
 
@@ -577,7 +660,7 @@ env.SeedEvent(TestHelpers.CreateTestEvent(totalSeats: 5));
 var eventService = scope.ServiceProvider.GetRequiredService<IEventService>();
 ```
 
-У Bookings в окружение добавлен мок `IBookingConfirmedPublisher` — иначе `BookingProcessingBackgroundService` не получит его через DI. У Events — идемпотентный in-memory журнал обработанных `BookingId`, повторяющий поведение `ProcessedBookingConfirmation`.
+У Bookings в окружение добавлен мок `IBookingConfirmedPublisher` — иначе `BookingProcessingBackgroundService` не получит его через DI. У Events — идемпотентный in-memory журнал обработанных `BookingId`, повторяющий поведение `ProcessedBookingConfirmation`, и мок `ICacheService` (`env.CacheService`): без явной настройки он ведёт себя как пустой кеш — `GetAsync` возвращает `null`, то есть промах, и сценарий идёт в мок-репозиторий. Поэтому тесты, которые про кеш ничего не знают, продолжают проверять ровно ту же бизнес-логику, что и до его появления, а тесты про кеш задают поведение явно через `Setup`/`Verify`.
 
 Основные наборы:
 
@@ -585,8 +668,10 @@ var eventService = scope.ServiceProvider.GetRequiredService<IEventService>();
 - `Users/PasswordHasherTests` — формат хеша (BCrypt), разная соль на одинаковый пароль, верификация нового формата и legacy SHA-256.
 - `Users/JwtTokenGeneratorTests` — состав claims (`nameid`/`unique_name`/`role`/`jti`), issuer/audience, уникальность `jti`, успешная/неуспешная (чужой секрет) валидация.
 - `Events/EventServiceTests` — создание, обновление, удаление, получение по ID, фильтрация, пагинация, валидация дат.
-- `Events/EventTests` — изолированные тесты доменной модели `Event` (`TryReserveSeats`/`ReleaseSeats`).
-- `Events/BookingConfirmedConsumerTests` — обработка сообщения напрямую (`HandleMessageAsync` сделан `internal` + `InternalsVisibleTo`, без поднятия настоящего Kafka-консьюмера): резерв места, событие не найдено, мест не осталось, битый JSON, дубликат по идемпотентности (повторный вызов не должен уменьшать места дважды), необработанное исключение репозитория не должно ронять обработчик.
+- `Events/EventTests` — изолированные тесты доменной модели `Event` (`TryReserveSeats`/`ReleaseSeats`, `ChangeCapacity`: пересчёт свободных мест при увеличении и уменьшении вместимости, граница «ровно проданные места», отказ при вместимости ниже проданных и при неположительном значении).
+- `Events/RedisCacheServiceTests` — сама реализация кеша с мок-`IConnectionMultiplexer`/`IDatabase` (класс тестируется напрямую, интерфейса-обёртки над ним нет): чтение существующего и отсутствующего ключа, а также graceful degradation — падение команды Redis, битый JSON в значении и недоступное соединение возвращают промах / не бросают исключение наружу, но пишут `LogWarning`.
+- `Events/EventCachingTests` — кеш-логика `EventService` с моками кеша и репозитория: попадание в кеш для `GetEventAsync`/`GetTopEventsAsync` (репозиторий не вызывается вообще — `Times.Never`), промах (данные читаются из репозитория и записываются в кеш нужным ключом), инвалидация ключа `event:{id}` после `UpdateEventAsync` и `RemoveEventAsync`.
+- `Events/BookingConfirmedConsumerTests` — обработка сообщения напрямую (`HandleMessageAsync` сделан `internal` + `InternalsVisibleTo`, без поднятия настоящего Kafka-консьюмера): резерв места, событие не найдено, мест не осталось, битый JSON, дубликат по идемпотентности (повторный вызов не должен уменьшать места дважды), необработанное исключение репозитория не должно ронять обработчик, инвалидация кеша события после успешного резерва — и её отсутствие, когда сообщение пропущено (мест не осталось).
 - `Bookings/BookingServiceTests` — создание брони с проверкой лимита активных броней и его независимости между пользователями; отмену — успешную (владелец), `ForbiddenException` для чужой брони, `InvalidOperationDomainException` при повторной отмене; `ForbiddenException` при просмотре чужой брони не-владельцем.
 - `Bookings/BookingTests` — изолированные тесты домена `Booking` (`Confirm`/`Reject`/`Cancel`).
 - `Bookings/BookingProcessingBackgroundServiceTests` — перевод `Pending` в `Confirmed`, заполнение `ProcessedAt`, обработка отмены через `CancellationToken`.
@@ -616,6 +701,7 @@ HTTP-тесты Events и Bookings не поднимают реальный User
 | Логика use case: валидация, доменные исключения, маппинг в DTO | `TicketFlow.Tests/<Сервис>/` |
 | Обработка сообщения Kafka (`HandleMessageAsync`), формирование сообщения издателем | `TicketFlow.Tests/<Сервис>/`, без реального брокера |
 | Взаимодействие с портом (сколько раз вызван `SaveChangesAsync`) | `TicketFlow.Tests`, через `Verify` |
+| Работа с кешем: попадание, промах, инвалидация ключа | `TicketFlow.Tests/Events/`, мок `ICacheService` + `Verify` |
 | Трансляция LINQ в SQL: фильтры, сортировка, пагинация | `TicketFlow.IntegrationTests/<Сервис>/` |
 | Сохранение изменений, миграции, ограничения БД | `TicketFlow.IntegrationTests/<Сервис>/` |
 | HTTP-уровень: аутентификация, авторизация по ролям | `TicketFlow.IntegrationTests/<Сервис>/` |
@@ -630,6 +716,41 @@ HTTP-тесты Events и Bookings не поднимают реальный User
 
 ---
 
+## 🗄 Кеширование (Redis, сервис Events)
+
+Кеш появился ровно там, где чтений заметно больше записей, — в сервисе Events. Redis изолирован за портом `ICacheService` (Application), реализация `RedisCacheService` — в Infrastructure, соединение `IConnectionMultiplexer` регистрируется singleton'ом. `EventService` реализует **cache-aside**: сначала читает кеш, при промахе идёт в репозиторий и кладёт результат обратно с TTL. Ключи собраны в `Caching/CacheKeys`, TTL — в `Options/CacheOptions` из секции `Cache` (см. [«Настройка Redis и TTL кеша»](#настройка-redis-и-ttl-кеша)).
+
+| Ключ | Что лежит | Стратегия актуализации | TTL |
+|---|---|---|---|
+| `event:{id}` | `EventInfoDto` одного события (`GET /events/{id}`) | Delete-on-Write + TTL как подстраховка | 60 сек |
+| `events:top10` | Топ-10 событий по проценту проданных мест (`GET /events/top`) | только TTL | 300 сек |
+
+Кешируются два независимых сценария, каждый со своей стратегией обновления.
+
+**`events:top10` (TTL-only, 300 сек).** Список читает без авторизации каждый посетитель главной страницы — при промахе шло бы обращение в базу на каждый визит. Явная инвалидация избыточна: рейтинг всё равно меняется постепенно (по мере бронирований), а не скачками, и небольшое устаревание для агрегата некритично. TTL 5 минут — компромисс между нагрузкой на БД и свежестью списка.
+
+**`event:{id}` (Delete-on-Write, TTL 60 сек как подстраховка).** Для карточки события устаревание заметнее — доступные места должны быть близки к актуальным. Выбран Delete-on-Write (инвалидация вместо обновления): при изменении, удалении события (`EventService`) и при уменьшении мест из `BookingConfirmedConsumer` ключ `event:{id}` просто удаляется из кеша. Следующее чтение прогревает кеш заново из базы.
+
+Update-on-Write отвергнут не потому, что его тяжело реализовать — здесь он был бы дёшев: `BookingConfirmedConsumer` уже держит свежую сущность в памяти, а `EventInfoDto` собирается в одно выражение, то есть критерий «объект легко собрать для кеша» выполняется. Он отвергнут потому, что его единственное реальное преимущество в этой системе не востребовано: постоянно прогретый ключ нужен, когда одну и ту же карточку читают десятки-сотни раз в секунду и даже короткое окно «пустого» кеша создаёт очередь запросов к базе. Такой нагрузки на карточку отдельного события здесь не ожидается, поэтому за неиспользуемую выгоду не стоит платить ни сложностью (при параллельной записи Update-on-Write требует защиты от гонок — блокировок либо сверки версий данных), ни риском записать в кеш несогласованный слепок: в `UpdateEventAsync` DTO собирается из отслеживаемой сущности, и если писать его в кеш, можно сохранить `AvailableSeats`, который в этот момент уже уменьшил Kafka-консьюмер. При удалении ключа такого риска нет — записывать нечего.
+
+TTL 60 сек — не основной механизм актуальности (её обеспечивает инвалидация), а страховка сразу от двух вещей: от пропущенного пути изменения данных и от остаточной гонки самого cache-aside. Гонка выглядит так: читатель промахнулся и уже идёт в базу, в этот момент писатель сохраняет изменения и удаляет ключ, а читатель следом записывает в кеш свой — уже устаревший — результат. Полностью её убирают версионированием значений или отложенным повторным удалением; для учебного сервиса это неоправданное усложнение, поэтому окно неконсистентности просто ограничено сверху временем жизни ключа.
+
+Цена выбранной стратегии, принятая осознанно: первый читатель после каждой записи платит за поход в базу — при Update-on-Write не платил бы никто. На ожидаемой нагрузке это один лишний запрос на событие после его изменения.
+
+**Создание события.** `AddEventAsync` кеш не трогает вообще, и это не пропущенный случай: идентификатор у события новый, поэтому ключа `event:{id}` в Redis ещё не существует — инвалидировать нечего, а появится он при первом чтении карточки. Топ-10 при создании тоже не сбрасывается: новое событие с нулём проданных мест в рейтинг всё равно не попадёт, а когда места начнут продаваться, список обновится по TTL.
+
+**Порядок операций.** Во всех местах кеш меняется только после успешного `SaveChangesAsync`: если процесс оборвётся между записью в базу и удалением ключа, база останется корректной, а кеш максимум доживёт до окончания TTL.
+
+**Недоступность Redis.** `RedisCacheService` перехватывает исключения на каждой операции, логирует предупреждение и возвращает признак промаха / no-op — сервис работает напрямую с базой, клиент ошибки не видит. `IConnectionMultiplexer` регистрируется с `AbortOnConnectFail = false`, поэтому сервис поднимается и остаётся рабочим, даже если Redis недоступен на старте.
+
+**Изменение данных через асинхронные события.** Места уменьшает не HTTP-запрос, а `BookingConfirmedConsumer` при обработке `BookingConfirmed` из Kafka (см. [«Асинхронное взаимодействие через Kafka»](#-асинхронное-взаимодействие-через-kafka)) — поэтому инвалидация стоит и там, сразу после `SaveChangesAsync`, тем же ключом `event:{id}`. Если сообщение пропущено (событие не найдено, мест не осталось, дубликат по идемпотентности), кеш не трогается: данные не менялись, инвалидировать нечего. Топ-10 при этом сознательно не инвалидируется — иначе каждое подтверждённое бронирование сбрасывало бы общий для всех посетителей ключ, а выигрыш в свежести рейтинга был бы незаметен.
+
+**Что кешем не покрыто.** Список `GET /events` с произвольными фильтрами и пагинацией — у него слишком много вариантов ключа при небольшой выгоде, он ходит в базу напрямую. Кеша на запись (write-through) тоже нет — ни одна мутирующая операция не прогревает ключ заранее, кеш наполняют только читатели.
+
+Поведение кеша закреплено юнит-тестами: `Events/EventCachingTests` (попадание, промах, инвалидация на уровне сервиса), `Events/RedisCacheServiceTests` (деградация самой реализации при недоступном Redis и битом значении) и два теста инвалидации в `Events/BookingConfirmedConsumerTests` — см. [«Unit-тесты»](#unit-тесты).
+
+---
+
 ## 📅 Доменные правила по сервисам
 
 ### 🎟 Модель данных события (Event, сервис Events)
@@ -638,10 +759,14 @@ Rich Domain Model, как и раньше — сущность сама упра
 - `Id` (`Guid`) — уникальный идентификатор события.
 - `Title`, `Description` — базовая информация о мероприятии.
 - `StartAt`, `EndAt` (`DateTime`) — временные рамки проведения.
-- `TotalSeats` (`int`) — общее количество мест, задаётся при создании, должно быть больше нуля.
-- `AvailableSeats` (`int`) — свободные места; изменяется через `TryReserveSeats(count)`/`ReleaseSeats(count)`.
+- `TotalSeats` (`int`) — общее количество мест, должно быть больше нуля; сеттер приватный, менять можно только через `ChangeCapacity(totalSeats)` (при создании — через фабрику `Event.Create`).
+- `AvailableSeats` (`int`) — свободные места; изменяется через `TryReserveSeats(count)`/`ReleaseSeats(count)` и пересчитывается в `ChangeCapacity`.
+
+**Изменение вместимости** (`ChangeCapacity`, вызывается из `EventService.UpdateEventAsync`) сохраняет число уже проданных мест `TotalSeats - AvailableSeats`: при увеличении вместимости все новые места становятся свободными, при уменьшении — свободных становится меньше на ту же величину. Уменьшить вместимость ниже числа проданных мест нельзя (`ValidationException` → 400): Events не может «отменить» уже подтверждённые брони — они живут в другом сервисе. Инвариант держит сама сущность, а не слой приложения, поэтому обойти его присваиванием поля невозможно; на уровне API есть ещё и быстрый отказ `[Range(1, int.MaxValue)]` в `UpdateEventDto`.
 
 Разница со спринтом 8: `TryReserveSeats` теперь вызывается не из HTTP-запроса на бронирование, а из `BookingConfirmedConsumer` при обработке сообщения Kafka — синхронной связи между бронированием и уменьшением мест больше нет.
+
+На этих же двух полях считается «популярность» события для топ-10: доля проданных мест `(TotalSeats - AvailableSeats) / TotalSeats`. Отдельного поля-счётчика в сущности нет — величина производная и вычисляется запросом (`GetTopPopularAsync`), см. [«Кеширование»](#-кеширование-redis-сервис-events).
 
 ### 👤 Модель данных пользователя (User, сервис Users)
 
@@ -677,7 +802,9 @@ Rich Domain Model, как и раньше — сущность сама упра
 
 **Шаг 3.** Через 2–7 секунд фоновый сервис Bookings подтверждает бронь: `Pending` → `Confirmed`, публикует `BookingConfirmed` в Kafka.
 
-**Шаг 4.** Events получает сообщение, уменьшает `availableSeats` на `SeatsCount`. Повторный `GET /events/{id}` в Events покажет обновлённое количество мест — раньше это происходило синхронно в момент бронирования, теперь асинхронно, с задержкой на публикацию и обработку сообщения.
+**Шаг 4.** Events получает сообщение, уменьшает `availableSeats` на `SeatsCount` и сразу после сохранения в базу удаляет ключ `event:{id}` из Redis. Повторный `GET /events/{id}` промахнётся по кешу, прочитает актуальное значение из базы и прогреет кеш заново — раньше уменьшение мест происходило синхронно в момент бронирования, теперь асинхронно, с задержкой на публикацию и обработку сообщения.
+
+**Шаг 4a.** Виджет главной страницы (`GET /events/top`) увидит изменившуюся долю проданных мест не сразу, а в пределах TTL (до 5 минут) — это осознанный компромисс, см. [«Кеширование»](#-кеширование-redis-сервис-events).
 
 **Шаг 5.** Владелец (или Admin) может отменить бронь: `DELETE /bookings/{id}` → `204 No Content`. Отмена — по-прежнему только в Bookings; `availableSeats` в Events при этом не восстанавливается (обратного потока «BookingCancelled» в этом спринте не реализовано).
 
