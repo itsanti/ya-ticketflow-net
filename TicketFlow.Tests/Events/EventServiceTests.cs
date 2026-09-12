@@ -344,6 +344,28 @@ namespace TicketFlow.Tests.Events
             await Assert.ThrowsAsync<ValidationException>(() => service.AddEventAsync(invalidDto));
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public async Task UpdateEvent_ShouldThrowValidationException_WhenTotalSeatsIsNotPositive(int totalSeats)
+        {
+            using var serviceProvider = TestHelpers.Create();
+            using var scope = serviceProvider.CreateScope();
+
+            var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+
+            var id = await service.AddEventAsync(_events.First());
+            var invalidUpdate = new UpdateEventDto
+            {
+                Title = "Valid Title",
+                StartAt = new DateTime(2026, 06, 01, 19, 0, 0),
+                EndAt = new DateTime(2026, 06, 01, 21, 0, 0),
+                TotalSeats = totalSeats,
+            };
+
+            await Assert.ThrowsAsync<ValidationException>(() => service.UpdateEventAsync(id, invalidUpdate));
+        }
+
         [Fact]
         public async Task UpdateEvent_ShouldThrowValidationException_WhenNewDatesAreInvalid()
         {

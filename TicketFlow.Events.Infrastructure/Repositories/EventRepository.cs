@@ -30,7 +30,9 @@ namespace TicketFlow.Events.Infrastructure.Repositories
         {
             return await _context.Events
                 .AsNoTracking()
-                .OrderByDescending(e => (double)(e.TotalSeats - e.AvailableSeats) / e.TotalSeats)
+                .OrderByDescending(e => e.TotalSeats == 0
+                    ? 0d
+                    : (double)(e.TotalSeats - e.AvailableSeats) / e.TotalSeats)
                 .ThenBy(e => e.Id)
                 .Take(count)
                 .ToListAsync(ct);

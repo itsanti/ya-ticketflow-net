@@ -127,6 +127,7 @@ namespace TicketFlow.Events.Application.Services
         public async Task<EventInfoDto> UpdateEventAsync(Guid eventId, UpdateEventDto dto)
         {
             ValidateDates(dto.StartAt, dto.EndAt);
+            ValidateTotalSeats(dto.TotalSeats);
 
             var existingEvent = await GetEventEntityAsync(eventId);
 
@@ -166,6 +167,12 @@ namespace TicketFlow.Events.Application.Services
         {
             if (endAt <= startAt)
                 throw new ValidationException("EndAt must be greater than StartAt");
+        }
+
+        private static void ValidateTotalSeats(int totalSeats)
+        {
+            if (totalSeats <= 0)
+                throw new ValidationException("TotalSeats must be greater than 0");
         }
     }
 }

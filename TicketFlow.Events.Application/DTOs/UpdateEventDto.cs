@@ -16,6 +16,7 @@ namespace TicketFlow.Events.Application.DTOs
         public required DateTime EndAt { get; set; }
 
         [Required]
+        [Range(1, int.MaxValue)]
         public required int TotalSeats { get; set; }
     }
 }
