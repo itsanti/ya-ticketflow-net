@@ -138,6 +138,9 @@ namespace TicketFlow.Events.Application.Services
 
             await _eventRepo.SaveChangesAsync();
 
+            // Delete-on-Write: следующее чтение прогреет кеш заново.
+            await _cache.RemoveAsync(CacheKeys.EventKey(eventId));
+
             return new EventInfoDto
             {
                 Id = existingEvent.Id,
@@ -155,6 +158,8 @@ namespace TicketFlow.Events.Application.Services
             var eventItem = await GetEventEntityAsync(eventId);
             _eventRepo.Remove(eventItem);
             await _eventRepo.SaveChangesAsync();
+
+            await _cache.RemoveAsync(CacheKeys.EventKey(eventId));
         }
 
         private static void ValidateDates(DateTime startAt, DateTime endAt)

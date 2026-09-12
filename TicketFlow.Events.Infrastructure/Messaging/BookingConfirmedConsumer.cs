@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using TicketFlow.Contracts;
 using TicketFlow.Events.Application.Abstractions;
+using TicketFlow.Events.Application.Caching;
 
 namespace TicketFlow.Events.Infrastructure.Messaging
 {
@@ -90,6 +91,7 @@ namespace TicketFlow.Events.Infrastructure.Messaging
                 // Consumer — singleton, IEventRepository/DbContext — scoped: свой scope на каждое сообщение.
                 using var scope = scopeFactory.CreateScope();
                 var eventRepository = scope.ServiceProvider.GetRequiredService<IEventRepository>();
+                var cache = scope.ServiceProvider.GetRequiredService<ICacheService>();
 
                 if (await eventRepository.IsBookingProcessedAsync(bookingConfirmedEvent.BookingId, ct))
                 {
@@ -117,6 +119,9 @@ namespace TicketFlow.Events.Infrastructure.Messaging
                 // Место и запись об обработке сохраняются в одной транзакции SaveChangesAsync.
                 await eventRepository.MarkBookingProcessedAsync(bookingConfirmedEvent.BookingId, DateTime.UtcNow, ct);
                 await eventRepository.SaveChangesAsync(ct);
+
+                // Delete-on-Write, как и в EventService: места изменились — инвалидируем кеш события.
+                await cache.RemoveAsync(CacheKeys.EventKey(eventItem.Id), ct);
 
                 logger.LogInformation("Reserved {SeatsCount} seat(s) for event {EventId} from booking {BookingId}.",
                     bookingConfirmedEvent.SeatsCount, bookingConfirmedEvent.EventId, bookingConfirmedEvent.BookingId);
