@@ -89,6 +89,14 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7.2-alpine
+    container_name: eventapi-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ─────────────────────────── Сервисы ───────────────────────────
   users-service:
@@ -125,6 +133,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: "Host=events-db;Port=5432;Database=events;Username=postgres;Password=postgres"
@@ -134,6 +144,7 @@ services:
       Jwt__Secret: "037048d666b378eb0147eec79ccd91b8e016e23fb5d9f5a131855bf94ef3fb8d"
       Kafka__BootstrapServers: kafka:29092
       Kafka__ConsumerGroup: events-service
+      Redis__ConnectionString: "redis:6379"
     ports:
       - "5102:8080"
 
