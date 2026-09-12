@@ -92,6 +92,9 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: eventapi-redis
+    ports:
+      # Для локального запуска сервиса Events с хоста (appsettings по умолчанию смотрит на localhost:6379).
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
