@@ -14,7 +14,7 @@ namespace TicketFlow.Events.Domain.Entities
 
         public required DateTime EndAt { get; set; }
 
-        public required int TotalSeats { get; set; }
+        public int TotalSeats { get; private set; }
 
         public int AvailableSeats { get; private set; }
 
@@ -38,6 +38,21 @@ namespace TicketFlow.Events.Domain.Entities
                 TotalSeats = totalSeats,
                 AvailableSeats = totalSeats
             };
+        }
+
+        public void ChangeCapacity(int totalSeats)
+        {
+            if (totalSeats <= 0)
+                throw new ValidationException("TotalSeats must be greater than 0");
+
+            var reservedSeats = TotalSeats - AvailableSeats;
+
+            if (totalSeats < reservedSeats)
+                throw new ValidationException(
+                    $"TotalSeats can not be less than {reservedSeats} already reserved seat(s).");
+
+            TotalSeats = totalSeats;
+            AvailableSeats = totalSeats - reservedSeats;
         }
 
         public bool TryReserveSeats(int count = 1)
