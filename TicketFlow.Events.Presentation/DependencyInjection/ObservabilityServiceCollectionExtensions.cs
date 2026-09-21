@@ -1,21 +1,18 @@
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using TicketFlow.Events.Presentation.Options;
 
 namespace TicketFlow.Events.Presentation.DependencyInjection
 {
     public static class ObservabilityServiceCollectionExtensions
     {
-        private const string DefaultServiceName = "events-service";
-
         public static IServiceCollection AddObservability(this IServiceCollection services, IConfiguration configuration)
         {
-            var serviceName = configuration["Otlp:ServiceName"] ?? DefaultServiceName;
-
-            var otlpEndpoint = configuration["Otlp:Endpoint"];
+            var otlpOptions = configuration.GetSection(OtlpOptions.SectionName).Get<OtlpOptions>() ?? new OtlpOptions();
 
             services.AddOpenTelemetry()
-                .ConfigureResource(resource => resource.AddService(serviceName))
+                .ConfigureResource(resource => resource.AddService(otlpOptions.ServiceName))
                 .WithTracing(tracing =>
                 {
                     tracing
@@ -23,9 +20,9 @@ namespace TicketFlow.Events.Presentation.DependencyInjection
                         .AddHttpClientInstrumentation()
                         .AddEntityFrameworkCoreInstrumentation();
 
-                    if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+                    if (!string.IsNullOrWhiteSpace(otlpOptions.Endpoint))
                     {
-                        tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+                        tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpOptions.Endpoint));
                     }
                 })
                 .WithMetrics(metrics => metrics
