@@ -114,6 +114,14 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: eventapi-prometheus
+    # Ждём готовности сервисов, чтобы первые скрейпы не уходили в ещё не поднятый хост.
+    depends_on:
+      users-service:
+        condition: service_healthy
+      events-service:
+        condition: service_healthy
+      bookings-service:
+        condition: service_healthy
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
@@ -157,6 +165,12 @@ services:
       Otlp__Endpoint: http://jaeger:4317
     ports:
       - "5101:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   events-service:
     build:
@@ -188,6 +202,12 @@ services:
       Otlp__Endpoint: http://jaeger:4317
     ports:
       - "5102:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   bookings-service:
     build:
@@ -215,6 +235,12 @@ services:
       Otlp__Endpoint: http://jaeger:4317
     ports:
       - "5103:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   users-db-data:
