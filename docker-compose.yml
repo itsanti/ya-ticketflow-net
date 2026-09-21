@@ -116,9 +116,6 @@ services:
     container_name: eventapi-prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    # Нужно только для закомментированного job'а со скрейпом сервиса, запущенного на хосте.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
 
