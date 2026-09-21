@@ -17,6 +17,9 @@ namespace TicketFlow.IntegrationTests.Events
         {
             builder.UseEnvironment("Development");
 
+            // Пустой endpoint отключает OTLP-экспортёр: тестам не нужен коллектор на localhost:4317.
+            builder.UseSetting("Otlp:Endpoint", string.Empty);
+
             builder.ConfigureServices(services =>
             {
                 var descriptor = services.SingleOrDefault(

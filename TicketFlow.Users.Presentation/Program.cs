@@ -1,3 +1,6 @@
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using TicketFlow.Users.Application.Abstractions;
 using TicketFlow.Users.Application.DependencyInjection;
 using TicketFlow.Users.Domain.Entities;
@@ -14,6 +17,11 @@ namespace TicketFlow.Users.Presentation
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            builder.Host.UseSerilog((context, loggerConfiguration) => loggerConfiguration
+                .ReadFrom.Configuration(context.Configuration)
+                .Enrich.FromLogContext()
+                .WriteTo.Console(new CompactJsonFormatter()));
+
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
             builder.Services.AddInfrastructureServices(connectionString, builder.Configuration);
@@ -21,6 +29,8 @@ namespace TicketFlow.Users.Presentation
             builder.Services.AddApplicationServices();
 
             builder.Services.AddPresentationServices(builder.Configuration);
+
+            builder.Services.AddObservability(builder.Configuration);
 
             var app = builder.Build();
 
@@ -34,6 +44,16 @@ namespace TicketFlow.Users.Presentation
                 return;
             }
 
+            app.UseSerilogRequestLogging(options =>
+            {
+                // Скрейп Prometheus идёт раз в 15 секунд и иначе забивает лог.
+                options.GetLevel = (context, _, exception) => exception is not null || context.Response.StatusCode >= 500
+                    ? LogEventLevel.Error
+                    : context.Request.Path.StartsWithSegments("/metrics")
+                        ? LogEventLevel.Debug
+                        : LogEventLevel.Information;
+            });
+
             app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
             if (app.Environment.IsDevelopment())
@@ -41,11 +61,19 @@ namespace TicketFlow.Users.Presentation
                 app.MapOpenApi();
                 app.UseSwagger();
                 app.UseSwaggerUI();
-                app.UseRequestLogging();
             }
 
-            app.UseHttpsRedirection();
+            // В контейнере сервис слушает только http, редиректить некуда.
+            // Локально /metrics всё равно выводится из-под редиректа: Prometheus ходит по http.
+            if (!app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments("/metrics"),
+                    branch => branch.UseHttpsRedirection());
+            }
+
             app.MapControllers();
+            app.MapPrometheusScrapingEndpoint();
 
             await app.RunAsync();
         }
