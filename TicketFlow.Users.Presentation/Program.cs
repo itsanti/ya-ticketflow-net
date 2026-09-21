@@ -44,8 +44,6 @@ namespace TicketFlow.Users.Presentation
                 return;
             }
 
-            app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
-
             app.UseSerilogRequestLogging(options =>
             {
                 // Скрейп Prometheus идёт раз в 15 секунд и иначе забивает лог.
@@ -55,6 +53,8 @@ namespace TicketFlow.Users.Presentation
                         ? LogEventLevel.Debug
                         : LogEventLevel.Information;
             });
+
+            app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
             if (app.Environment.IsDevelopment())
             {
