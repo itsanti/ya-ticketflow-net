@@ -22,6 +22,8 @@ namespace TicketFlow.Users.Presentation
 
             builder.Services.AddPresentationServices(builder.Configuration);
 
+            builder.Services.AddObservability(builder.Configuration);
+
             var app = builder.Build();
 
             app.Services.ApplyMigrations();
@@ -44,8 +46,12 @@ namespace TicketFlow.Users.Presentation
                 app.UseRequestLogging();
             }
 
-            app.UseHttpsRedirection();
+            app.UseWhen(
+                context => !context.Request.Path.StartsWithSegments("/metrics"),
+                branch => branch.UseHttpsRedirection());
+
             app.MapControllers();
+            app.MapPrometheusScrapingEndpoint();
 
             await app.RunAsync();
         }
