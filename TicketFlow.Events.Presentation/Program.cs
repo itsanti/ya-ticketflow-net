@@ -52,9 +52,14 @@ namespace TicketFlow.Events.Presentation
                 app.UseSwaggerUI();
             }
 
-            app.UseWhen(
-                context => !context.Request.Path.StartsWithSegments("/metrics"),
-                branch => branch.UseHttpsRedirection());
+            // В контейнере сервис слушает только http, редиректить некуда.
+            // Локально /metrics всё равно выводится из-под редиректа: Prometheus ходит по http.
+            if (!app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments("/metrics"),
+                    branch => branch.UseHttpsRedirection());
+            }
 
             app.UseAuthentication();
             app.UseAuthorization();
