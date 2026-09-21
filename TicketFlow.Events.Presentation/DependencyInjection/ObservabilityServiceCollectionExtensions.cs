@@ -16,7 +16,8 @@ namespace TicketFlow.Events.Presentation.DependencyInjection
                 .WithTracing(tracing =>
                 {
                     tracing
-                        .AddAspNetCoreInstrumentation()
+                        .AddAspNetCoreInstrumentation(options => options.Filter =
+                            context => !context.Request.Path.StartsWithSegments("/metrics"))
                         .AddHttpClientInstrumentation()
                         .AddEntityFrameworkCoreInstrumentation();
 
