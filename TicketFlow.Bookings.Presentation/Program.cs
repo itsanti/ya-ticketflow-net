@@ -1,3 +1,6 @@
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using TicketFlow.Bookings.Application.DependencyInjection;
 using TicketFlow.Bookings.Infrastructure.DependencyInjection;
 using TicketFlow.Bookings.Presentation.DependencyInjection;
@@ -10,6 +13,11 @@ namespace TicketFlow.Bookings.Presentation
         public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            builder.Host.UseSerilog((context, loggerConfiguration) => loggerConfiguration
+                .ReadFrom.Configuration(context.Configuration)
+                .Enrich.FromLogContext()
+                .WriteTo.Console(new CompactJsonFormatter()));
 
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -27,12 +35,21 @@ namespace TicketFlow.Bookings.Presentation
 
             app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
+            app.UseSerilogRequestLogging(options =>
+            {
+                // Скрейп Prometheus идёт раз в 15 секунд и иначе забивает лог.
+                options.GetLevel = (context, _, exception) => exception is not null || context.Response.StatusCode >= 500
+                    ? LogEventLevel.Error
+                    : context.Request.Path.StartsWithSegments("/metrics")
+                        ? LogEventLevel.Debug
+                        : LogEventLevel.Information;
+            });
+
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.UseSwagger();
                 app.UseSwaggerUI();
-                app.UseRequestLogging();
             }
 
             app.UseWhen(
