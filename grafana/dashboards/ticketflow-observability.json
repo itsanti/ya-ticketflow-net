@@ -166,8 +166,8 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Error rate — доля ответов 5xx",
-      "description": "Отношение запросов со статусом 5xx ко всем запросам сервиса.",
+      "title": "Error rate — доля ответов 4xx и 5xx",
+      "description": "Доля ответов с ошибкой от всех запросов сервиса. 5xx — ошибки сервера, 4xx — отказы по вине клиента (невалидный запрос, нет прав, не найдено); это разные вещи, поэтому показаны отдельными рядами.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -188,22 +188,40 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "5xx.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
           },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "4xx.*"
+            },
+            "properties": [
               {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0.05
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
               }
             ]
           }
-        },
-        "overrides": []
+        ]
       },
       "options": {
         "legend": {
@@ -224,8 +242,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\", http_response_status_code=~\"5..\"}[5m])) / sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m]))",
-          "legendFormat": "5xx {{job}}"
+          "expr": "(sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\", http_response_status_code=~\"5..\"}[5m])) or sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m]) * 0)) / clamp_min(sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m])), 0.0001)",
+          "legendFormat": "5xx (ошибки сервера) {{job}}"
         },
         {
           "refId": "B",
@@ -233,8 +251,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\", http_response_status_code=~\"4..\"}[5m])) / sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m]))",
-          "legendFormat": "4xx {{job}}"
+          "expr": "(sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\", http_response_status_code=~\"4..\"}[5m])) or sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m]) * 0)) / clamp_min(sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"$job\"}[5m])), 0.0001)",
+          "legendFormat": "4xx (отказы клиенту) {{job}}"
         }
       ]
     },
